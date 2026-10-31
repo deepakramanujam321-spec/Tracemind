@@ -1,6 +1,7 @@
 """Agent node implementations (pure functions of state + deps)."""
 from __future__ import annotations
 
+import logging
 import re
 import time
 from typing import Any
@@ -79,14 +80,20 @@ def code_analyst(state: dict, deps: InvestigationDeps) -> dict:
                      "about code yet."),
             Message(role="user", content=P.data_block("incident_context", P.context_text(ctx))
                     + "\n" + P.data_block("code_candidates", cand_txt)
-                    + f"\nReturn JSON {{reads:[{{path,start,end}}]}}, at most {deps.max_code_reads}."),
+                    + f"\nReturn JSON {{reads:[{{path,start,end}}]}}, at most {deps.max_code_reads}. `path` is the repository-relative "
+                    "file path only (for example worker/app.py), without any 'code:' or repository-id prefix."),
         ], CodeRequests)
         sources: list[tuple[str, str]] = []  # (ref, text) actually read
         for r in pick.reads[: deps.max_code_reads]:
             if r.end < r.start:
                 continue
-            text = deps.code.read_source(deps.repo_id, r.path, r.start, r.end)
-            ref = f"code:{deps.repo_id}:{r.path}:{r.start}-{r.end}"
+            path = _repo_relative(r.path, deps.repo_id)
+            try:
+                text = deps.code.read_source(deps.repo_id, path, r.start, r.end)
+            except Exception as e:  # one bad read must not fail the whole analysis; it simply yields no evidence
+                logging.getLogger("tracemind.investigation").warning("code_analyst skipped unreadable range %s:%s-%s: %s", path, r.start, r.end, e)
+                continue
+            ref = f"code:{deps.repo_id}:{path}:{r.start}-{r.end}"
             if text:
                 sources.append((ref, text[: deps.max_code_chars]))
         src_txt = "\n\n".join(f"REF {ref}\n{text}" for ref, text in sources) or "(no source could be read)"
@@ -119,6 +126,16 @@ def code_analyst(state: dict, deps: InvestigationDeps) -> dict:
         return {"hypotheses": []}
     _step(deps, inv, agent, "completed", hypothesis_ids=[h.id for h in hyps], code_reads=[r for r, _ in sources])
     return {"hypotheses": hyps}
+
+
+def _repo_relative(path: str, repo_id: str | None) -> str:
+    """Models sometimes echo the evidence-ref form ('code:<repo>:<path>' or '<repo>:<path>'); keep only the path."""
+    p = path.strip()
+    if p.startswith("code:"):
+        p = p[len("code:"):]
+    if repo_id and p.startswith(f"{repo_id}:"):
+        p = p[len(repo_id) + 1:]
+    return p
 
 
 def _covered(ref: str, read_refs: list[str]) -> bool:

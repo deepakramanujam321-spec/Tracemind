@@ -200,3 +200,10 @@ def test_remediation_hook_and_async_stream():
     assert any(e["type"] == "agent_step" and e["agent"] == "skeptic" for e in events)
     assert events[-1]["result"].adjudication.outcome == "confirmed"
     assert len(got) == 1
+
+
+def test_repo_relative_strips_ref_prefixes():
+    from tracemind.investigation.agents import _repo_relative
+    assert _repo_relative("demo-repo:worker/a.py", "demo-repo") == "worker/a.py"
+    assert _repo_relative("code:demo-repo:worker/a.py", "demo-repo") == "worker/a.py"
+    assert _repo_relative("worker/a.py", "demo-repo") == "worker/a.py"

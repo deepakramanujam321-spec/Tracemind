@@ -10,16 +10,27 @@ import { DiffView } from '../components/Diff'
 import { fmtClock, fmtDateTime, fmtDur } from '../util'
 
 const STAGES: { key: RemediationStatus; label: string; hint: string }[] = [
-  { key: 'patch_generated', label: 'Patch generated', hint: 'A diff exists. Nothing has been run yet.' },
+  { key: 'patch_generated', label: 'Patch generated', hint: 'A diff was produced from the model edits.' },
   { key: 'tested', label: 'Tested', hint: 'Tests ran in the sandbox; results captured.' },
   { key: 'verified', label: 'Verified', hint: 'Tests including the injected-scenario regression passed.' },
 ]
 const RANK: Record<string, number> = { queued: -1, running: -1, failed: -1, patch_generated: 0, tested: 1, verified: 2 }
+
+/** Stage reached. For failed runs, infer from what actually exists (a diff, after-patch test results). */
+function reached(r: Remediation): number {
+  if (r.status !== 'failed') return RANK[r.status]
+  if (r.test_results.some((t) => t.phase === 'after_patch')) return 1
+  return r.diff ? 0 : -1
+}
+const afterFailed = (r: Remediation) => r.test_results.some((t) => t.phase === 'after_patch' && t.outcome !== 'passed' && t.outcome !== 'skipped')
+const lastLine = (d: string | null) => (d ?? '').split('\n').map((l) => l.trim()).filter((l) => /\b(passed|failed|error)/i.test(l) && /\d/.test(l)).pop() ?? null
 const inFlight = (s: string) => s !== 'verified' && s !== 'failed'
+/** 'tested' with failing after-patch results is terminal: nothing further will happen. */
+const polling = (r: Remediation) => inFlight(r.status) && !(r.status === 'tested' && afterFailed(r))
 
 export default function RemediationPage() {
   const { id = '' } = useParams()
-  const { data, error, loading, reload } = useFetch(() => api.remediation(id), [id], { poll: 1200, done: (d: Remediation) => !inFlight(d.status) })
+  const { data, error, loading, reload } = useFetch(() => api.remediation(id), [id], { poll: 1200, done: (d: Remediation) => !polling(d) })
   const approve = useAction(async () => {
     await api.approve(id)
     reload()
@@ -42,7 +53,7 @@ export default function RemediationPage() {
             {r.approved && <span className="badge cert-confirmed"><i className="dot" />Approved</span>}
             <span className="mono small muted">{r.id}</span>
             {r.base_sha && <span className="mono small muted">base {r.base_sha.slice(0, 10)}</span>}
-            {inFlight(r.status) && <span className="live"><Spinner /> live · polling</span>}
+            {polling(r) && <span className="live"><Spinner /> live · polling</span>}
           </div>
         }
         actions={
@@ -57,11 +68,13 @@ export default function RemediationPage() {
       />
       {approve.error && <ErrorBox error={approve.error} />}
       {r.approved && <div className="state state-ok small">Approved{r.approved_by ? ` by ${r.approved_by}` : ''} {r.approved_at ? `at ${fmtDateTime(r.approved_at)}` : ''}. No code has been pushed or merged; PR creation is not yet available.</div>}
-      {r.error && <ErrorBox error={r.error} />}
+      {r.error && r.status === 'failed' && <div className="state state-error" role="alert"><div><strong>Failure:</strong> <span className="mono wrap">{r.error}</span></div></div>}
 
       <Card title="Verification status">
-        <Stepper status={r.status} />
-        {r.status === 'failed' && <div className="note note-bad small">Remediation failed before reaching verification. See command output below.</div>}
+        <Stepper r={r} />
+        {r.status === 'failed' && <div className="note note-bad small"><b>Remediation failed.</b> It did not reach verification; see the failure above and the command output below.</div>}
+        {r.status === 'tested' && afterFailed(r) && <div className="note note-warn small"><b>Tests ran but did not all pass.</b> The patch is not verified and cannot be approved.</div>}
+        {r.status === 'patch_generated' && <div className="note small">A patch exists but no tests have run yet.</div>}
       </Card>
 
       {r.summary && <p className="lede">{r.summary}</p>}
@@ -78,7 +91,9 @@ export default function RemediationPage() {
                   <span className="t-out">{t.outcome}</span>
                   <span className="mono small t-name">{t.name}</span>
                   <span className="pill">{t.phase.replace('_', ' ')}</span>
-                  {t.detail && <span className="mono small muted">{t.detail}</span>}
+                  {t.detail && (
+                    <details className="t-det"><summary className="small muted">{lastLine(t.detail) ?? 'output'}</summary><pre className="pre">{t.detail}</pre></details>
+                  )}
                 </li>
               ))}
             </ul>
@@ -99,18 +114,23 @@ export default function RemediationPage() {
   )
 }
 
-function Stepper({ status }: { status: RemediationStatus }) {
-  const rank = RANK[status]
+function Stepper({ r }: { r: Remediation }) {
+  const rank = reached(r)
+  const failed = r.status === 'failed'
   return (
     <ol className="stepper" aria-label="Remediation status">
       {STAGES.map((s, i) => {
         const done = rank >= i
-        const current = rank === i
-        const next = rank + 1 === i && status !== 'failed'
+        const current = rank === i && !failed
+        const next = rank + 1 === i && !failed && !afterFailed(r)
+        const warn = s.key === 'tested' && done && r.status === 'tested' && afterFailed(r)
         return (
-          <li key={s.key} className={`stg ${done ? 'stg-done' : ''} ${current ? 'stg-cur' : ''}`} aria-current={current ? 'step' : undefined}>
-            <i className="stg-dot">{done ? '✓' : next ? <Spinner size={10} /> : i + 1}</i>
-            <div><b>{s.label}</b><div className="small muted">{s.hint}</div></div>
+          <li key={s.key} className={`stg ${done ? 'stg-done' : ''} ${current ? 'stg-cur' : ''} ${warn ? 'stg-warn' : ''} ${failed ? 'stg-failed' : ''}`} aria-current={current ? 'step' : undefined}>
+            <i className="stg-dot">{warn ? '!' : done ? '✓' : next ? <Spinner size={10} /> : failed ? '–' : i + 1}</i>
+            <div>
+              <b>{s.label}</b>
+              <div className="small muted">{warn ? 'Tests ran, but not all passed.' : done ? s.hint : failed ? 'Not reached.' : next ? 'In progress…' : 'Pending.'}</div>
+            </div>
           </li>
         )
       })}
@@ -119,7 +139,7 @@ function Stepper({ status }: { status: RemediationStatus }) {
 }
 
 function Cmd({ c }: { c: CommandRun }) {
-  const [open, setOpen] = useState(c.exit_code !== 0)
+  const [open, setOpen] = useState(c.exit_code !== 0 && c.phase !== 'baseline_test') // a failing baseline is expected
   const ok = c.exit_code === 0
   return (
     <div className={`cmd ${ok ? 'cmd-ok' : 'cmd-bad'}`}>

@@ -229,3 +229,10 @@ kbd { font: 10px var(--mono); border: 1px solid var(--line-2); border-radius: 4p
 .hyp-desc .ref { vertical-align: middle; margin: 0 2px; }
 .val-card-inconclusive { border-top-color: var(--warn); border-style: dashed; border-top-style: solid; }
 .ic { font: 0.92em var(--mono); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+.note-warn { background: var(--warn-bg); color: var(--warn); }
+.stg-warn { opacity: 1; border-color: rgba(242,184,75,.5); background: var(--warn-bg); } .stg-warn .stg-dot { background: var(--warn); border-color: var(--warn); color: #1d1402; }
+.stg-failed:not(.stg-done) { border-style: dashed; opacity: .5; }
+.stg-failed.stg-done { border-color: var(--line-2); background: var(--bg-2); } .stg-failed.stg-done .stg-dot { background: var(--text-3); border-color: var(--text-3); }
+.t-det { flex-basis: 100%; margin-left: 60px; } .t-det summary { cursor: pointer; } .tests li { flex-wrap: wrap !important; }
+.btn-primary:disabled { background: var(--panel-2); color: var(--text-3); border-color: var(--line-2); opacity: .8; }

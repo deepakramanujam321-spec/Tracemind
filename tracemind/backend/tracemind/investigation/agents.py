@@ -92,9 +92,13 @@ def code_analyst(state: dict, deps: InvestigationDeps) -> dict:
         src_txt = "\n\n".join(f"REF {ref}\n{text}" for ref, text in sources) or "(no source could be read)"
         msgs = [
             P.system(agent, "Form independent hypotheses. Code-level claims are only allowed about source shown to "
-                     "you below and must cite its code: ref. Telemetry-level claims cite telemetry refs."),
+                     "you below and must cite its code: ref. Telemetry-level claims cite telemetry refs. "
+                     "In supporting_refs/contradicting_refs copy refs VERBATIM from the REF lines or the incident "
+                     "context: a code ref always starts with 'code:' and ends with a line range (code:<repo>:<path>:"
+                     "<start>-<end>). Never shorten, reformat or invent refs; unresolvable refs are discarded."),
             Message(role="user", content=P.data_block("incident_context", P.context_text(ctx))
                     + "\n" + P.data_block("source_code_read", src_txt)
+                    + "\nValid code refs (copy exactly): " + (", ".join(ref for ref, _ in sources) or "none")
                     + "\nReturn JSON {hypotheses:[{description, confidence, supporting_refs, contradicting_refs, "
                       "alternatives, missing_evidence}]}."),
         ]

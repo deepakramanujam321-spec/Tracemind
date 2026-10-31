@@ -157,7 +157,9 @@ class Service:
             hyps = self.q("SELECT * FROM hypotheses WHERE investigation_id=%s", (inv["id"],))
             root = next((h for h in hyps if h["id"].endswith(":" + (adj.get("root_cause_hypothesis_id") or ""))), None)
             refs = list(dict.fromkeys(root["supporting_refs"])) if root else []
-            code_refs = [r for r in refs if r.startswith("code:")]
+            # code refs may come from any non-rejected hypothesis (the winner can be telemetry-only)
+            code_refs = list(dict.fromkeys(r for h in hyps if h["validation_status"] != "rejected"
+                                           for r in h["supporting_refs"] if r.startswith("code:")))
             from tracemind.contracts import CodeFinding
             findings = [CodeFinding(ref=r, note="cited by root-cause hypothesis") for r in code_refs]
             store.set_status(rid, "pending", source_refs=code_refs)

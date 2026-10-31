@@ -8,9 +8,18 @@ from pydantic import BaseModel, Field
 RemediationStatus = Literal["patch_generated", "tested", "verified"]
 
 
+class Edit(BaseModel):
+    """Exact search/replace edit. `search` must occur exactly once in the file; empty `search` creates a new file."""
+    path: str = Field(description="File path relative to the repository root")
+    search: str = Field(description="Exact existing text to replace (must match exactly once); empty to create a new file")
+    replace: str
+
+
 class PatchProposal(BaseModel):
-    """Structured output requested from the model."""
-    diff: str = Field(description="Unified diff (git format, a/ b/ prefixes, paths relative to repo root)")
+    """Structured output requested from the model. Prefer `edits`; the engine derives the diff itself with git.
+    `diff` (unified diff) is still accepted when `edits` is empty."""
+    edits: list[Edit] = Field(default_factory=list)
+    diff: str = Field(default="", description="Legacy: unified diff (git format, a/ b/ prefixes, repo-relative paths)")
     explanation: str = ""
 
 

@@ -27,7 +27,12 @@ def provider_from_env(env: Mapping[str, str] | None = None) -> ModelProvider:
     if kind == "gemma_api":
         if not key:
             raise ModelConfigError("MODEL_API_KEY is required for gemma_api")
-        return GemmaApiProvider(model=model, api_key=key, base_url=base)
+        extra = {}
+        if (e.get("MODEL_TIMEOUT_S") or "").strip():
+            extra["timeout"] = float(e["MODEL_TIMEOUT_S"])
+        if (e.get("MODEL_THINKING_LEVEL") or "").strip():
+            extra["thinking_level"] = e["MODEL_THINKING_LEVEL"].strip()
+        return GemmaApiProvider(model=model, api_key=key, base_url=base, **extra)
     if kind == "gemma_local":
         return GemmaLocalProvider(model=model, base_url=base, api_key=key)
     raise ModelConfigError(f"unknown MODEL_PROVIDER {kind!r} (gemma_api | gemma_local)")

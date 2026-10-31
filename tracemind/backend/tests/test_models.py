@@ -92,3 +92,58 @@ def test_factory():
 def test_live_integration():
     p = provider_from_env()
     assert p.generate_structured([Message(role="user", content='Return {"x": 7}')], Out).x == 7
+
+
+def _ok(text="pong"):
+    return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
+
+
+def test_gemma_api_retries_transient_5xx_then_succeeds(monkeypatch):
+    import httpx
+    from tracemind.contracts import Message
+    from tracemind.models.gemma_api import GemmaApiProvider
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    calls = []
+
+    def handler(req):
+        calls.append(1)
+        return httpx.Response(500, json={"error": {"status": "INTERNAL"}}) if len(calls) < 3 else httpx.Response(200, json=_ok())
+
+    p = GemmaApiProvider("m", "k", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert p.generate([Message(role="user", content="x")]) == "pong" and len(calls) == 3
+
+
+def test_gemma_api_does_not_retry_client_errors(monkeypatch):
+    import httpx
+    import pytest
+    from tracemind.contracts import Message
+    from tracemind.models.gemma_api import GemmaApiProvider
+    from tracemind.models.structured import ModelError
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    calls = []
+
+    def handler(req):
+        calls.append(1)
+        return httpx.Response(400, json={"error": "bad"})
+
+    p = GemmaApiProvider("m", "k", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(ModelError):
+        p.generate([Message(role="user", content="x")])
+    assert len(calls) == 1
+
+
+def test_gemma_api_sends_thinking_level_and_drops_thought_parts():
+    import json
+
+    import httpx
+    from tracemind.contracts import Message
+    from tracemind.models.gemma_api import GemmaApiProvider
+    seen = {}
+
+    def handler(req):
+        seen.update(json.loads(req.content))
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"thought": True, "text": "hmm"}, {"text": "pong"}]}}]})
+
+    p = GemmaApiProvider("m", "k", thinking_level="minimal", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert p.generate([Message(role="user", content="x")]) == "pong"
+    assert seen["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "minimal"}

@@ -1,6 +1,8 @@
 """Diff validation and application. Applies ONLY inside the sandbox copy."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import re
 
 class PatchRejected(ValueError):
@@ -80,3 +82,42 @@ def validate_diff(diff: str, max_bytes: int = 200_000) -> list[str]:
     if not paths:
         raise PatchRejected("diff touches no files")
     return sorted({p[2:] if p.startswith(("a/", "b/")) else p for p in paths if p != "/dev/null"})
+
+
+def apply_edits(sandbox: Path, edits: list, max_total: int = 100_000) -> list[str]:
+    """Apply exact search/replace edits inside the sandbox copy only. Raises PatchRejected on any problem and
+    leaves the working tree untouched in that case (all edits are validated before anything is written)."""
+    if not edits:
+        raise PatchRejected("no edits")
+    if sum(len(e.search) + len(e.replace) for e in edits) > max_total:
+        raise PatchRejected("edits too large")
+    root = sandbox.resolve()
+    staged: dict[Path, str] = {}
+    for e in edits:
+        rel = Path(e.path)
+        if rel.is_absolute() or ".." in rel.parts or any(part.startswith(".git") for part in rel.parts) or not e.path:
+            raise PatchRejected(f"unsafe path {e.path!r}")
+        target = (root / rel)
+        # resolve symlinks of existing parents and make sure the file stays inside the sandbox
+        if root not in target.resolve().parents:
+            raise PatchRejected(f"path escapes sandbox: {e.path!r}")
+        if target.is_symlink():
+            raise PatchRejected(f"refusing to edit symlink {e.path!r}")
+        text = staged.get(target)
+        if text is None:
+            text = target.read_text() if target.is_file() else None
+        if e.search == "":
+            if text is not None:
+                raise PatchRejected(f"{e.path}: create requested but file exists")
+            staged[target] = e.replace
+            continue
+        if text is None:
+            raise PatchRejected(f"{e.path}: file does not exist")
+        n = text.count(e.search)
+        if n != 1:
+            raise PatchRejected(f"{e.path}: search text must match exactly once (found {n})")
+        staged[target] = text.replace(e.search, e.replace, 1)
+    for target, text in staged.items():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+    return sorted(str(t.relative_to(root)) for t in staged)

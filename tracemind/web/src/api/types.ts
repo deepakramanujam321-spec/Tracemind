@@ -84,6 +84,11 @@ export interface Challenge {
   challenge?: string
   response?: string
   outcome?: 'upheld' | 'withdrawn' | 'unresolved'
+  type?: string // e.g. code_ref_not_read (evidence_guard)
+  verdict?: 'holds' | 'weak' | 'refuted' // skeptic verdict
+  argument?: string
+  stripped?: EvidenceRef[] // refs removed by the evidence guard
+  refs?: EvidenceRef[]
   [k: string]: unknown
 }
 

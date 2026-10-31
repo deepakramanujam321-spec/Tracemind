@@ -4,7 +4,7 @@ import type { AgentStep, Challenge, Hypothesis, Investigation } from '../api/typ
 import { useAction, useFetch } from '../hooks'
 import { Card, CertaintyBadge, Empty, ErrorBox, Loading, Spinner, StatusBadge, ValidationBadge } from '../components/Common'
 import { PageHead } from '../components/Layout'
-import { RefList } from '../components/Evidence'
+import { RefList, RichText } from '../components/Evidence'
 import { fmtClock, fmtDur } from '../util'
 
 const active = (s: string) => s === 'queued' || s === 'running'
@@ -63,21 +63,22 @@ export default function InvestigationPage() {
           <div className="verdict-top">
             <div>
               <div className="eyebrow">Final adjudication</div>
-              <div className="verdict-cause">{adj.root_cause}</div>
+              <div className="verdict-cause"><RichText text={adj.root_cause} /></div>
             </div>
             <CertaintyBadge value={adj.certainty} large />
           </div>
-          <p className="verdict-why">{adj.rationale}</p>
+          <p className="verdict-why"><RichText text={adj.rationale} /></p>
           <div className="verdict-grid">
             <div>
               <div className="eyebrow">Decisive evidence</div>
               <RefList refs={adj.evidence_refs} tone="for" />
             </div>
             <div>
-              <div className="eyebrow">Winning / rejected</div>
+              <div className="eyebrow">Hypothesis outcome</div>
               <div className="meta-row">
                 {adj.winning_hypothesis_id && <span className="pill pill-win">{adj.winning_hypothesis_id} wins</span>}
                 {adj.rejected_hypothesis_ids.map((h) => <span key={h} className="pill pill-rej">{h} rejected</span>)}
+                {inv.hypotheses.filter((h) => h.id !== adj.winning_hypothesis_id && !adj.rejected_hypothesis_ids.includes(h.id)).map((h) => <span key={h.id} className="pill pill-inc">{h.id} {h.validation_status}</span>)}
               </div>
             </div>
           </div>
@@ -111,7 +112,7 @@ export default function InvestigationPage() {
         </div>
 
         <Card className="mt" title="Agent execution" aside={<span className="muted small">{inv.steps.filter((s) => s.status === 'completed').length}/{inv.steps.length} steps</span>}>
-          {inv.steps.length === 0 ? <Empty title="Waiting for the first agent step" /> : <ol className="steps">{inv.steps.map((s) => <Step key={s.id} s={s} />)}</ol>}
+          {inv.steps.length === 0 ? <Empty title="Waiting for the first agent step" /> : <ol className="steps">{[...inv.steps].sort((a, b) => Date.parse(a.started_at ?? '') - Date.parse(b.started_at ?? '') || 0).map((s) => <Step key={s.id} s={s} />)}</ol>}
         </Card>
 
       </div>
@@ -144,7 +145,7 @@ function Hyp({ h, winner }: { h: Hypothesis; winner: boolean }) {
         <div><b className="hyp-id">{h.id}</b> <span className="mono small muted">{h.author_agent}</span></div>
         <ValidationBadge value={h.validation_status} />
       </header>
-      <p className="hyp-desc">{h.description}</p>
+      <p className="hyp-desc"><RichText text={h.description} /></p>
       <div className="conf" title="Model estimate, not a probability">
         <div className="conf-bar"><i style={{ width: `${Math.round(h.confidence * 100)}%` }} /></div>
         <span className="small">{h.confidence.toFixed(2)} <span className="muted">model confidence</span></span>
@@ -171,13 +172,22 @@ function Hyp({ h, winner }: { h: Hypothesis; winner: boolean }) {
   )
 }
 
+const VERDICT: Record<string, string> = { holds: 'claim holds', weak: 'weakly supported', refuted: 'refuted' }
+
 function ChallengeItem({ c }: { c: Challenge }) {
-  const outcome = c.outcome
+  const guard = c.by === 'evidence_guard'
+  const outcome = c.outcome ?? 'unresolved'
+  const label = guard ? 'Evidence guard' : (c.by ?? 'skeptic')
+  const text = guard
+    ? `Removed ${c.stripped?.length ?? 0} cited reference(s) that the agent never actually read (${(c.type ?? 'unverified').replace(/_/g, ' ')}). They no longer count as evidence.`
+    : c.argument ?? c.challenge ?? ''
   return (
-    <div className={`chal chal-${outcome ?? 'none'}`}>
-      <div className="small"><b>{c.by ?? 'skeptic'}:</b> {c.challenge ?? JSON.stringify(c)}</div>
-      {c.response && <div className="small muted">Response: {c.response}</div>}
-      {outcome && <span className="chal-out">{outcome === 'upheld' ? 'challenge upheld' : outcome === 'withdrawn' ? 'challenge answered' : 'unresolved'}</span>}
+    <div className={`chal chal-${outcome} ${guard ? 'chal-guard' : ''}`}>
+      <div className="chal-by">{label}{c.verdict && <span className={`chal-verdict v-${c.verdict}`}>{VERDICT[c.verdict] ?? c.verdict}</span>}</div>
+      <div className="small"><RichText text={text} /></div>
+      {guard && c.stripped && c.stripped.length > 0 && <RefList refs={c.stripped} tone="against" />}
+      {c.response && <div className="small muted">Alternative: {c.response}</div>}
+      {!guard && <span className="chal-out">{outcome === 'upheld' ? 'challenge upheld' : outcome === 'withdrawn' ? 'challenge answered' : 'unresolved'}</span>}
     </div>
   )
 }

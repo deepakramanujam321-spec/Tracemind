@@ -92,7 +92,7 @@ kbd { font: 10px var(--mono); border: 1px solid var(--line-2); border-radius: 4p
 .pill { font-size: 10.5px; padding: 1px 8px; border-radius: 5px; background: var(--panel-2); border: 1px solid var(--line-2); color: var(--text-2); white-space: nowrap; }
 .pill-origin { color: var(--bad); border-color: rgba(255,107,114,.4); } .pill-transformation { color: var(--warn); border-color: rgba(242,184,75,.4); }
 .pill-impact { color: var(--violet); border-color: rgba(182,156,255,.4); } .pill-context { color: var(--info); border-color: rgba(122,167,255,.4); }
-.pill-win { color: var(--good); border-color: rgba(63,207,142,.4); } .pill-rej { color: var(--bad); border-color: rgba(255,107,114,.4); } .pill-new { color: var(--good); }
+.pill-win { color: var(--good); border-color: rgba(63,207,142,.4); } .pill-rej { color: var(--bad); border-color: rgba(255,107,114,.4); } .pill-new { color: var(--good); } .pill-inc { color: var(--text-2); border-style: dashed; }
 
 .refs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .ref { font: 11.5px var(--mono); display: inline-flex; align-items: stretch; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 6px; color: var(--text); cursor: pointer; padding: 0; overflow: hidden; }
@@ -221,3 +221,11 @@ kbd { font: 10px var(--mono); border: 1px solid var(--line-2); border-radius: 4p
 .run-first { display: flex; flex-direction: column; } .run-first > .mt { order: -1; }
 .t-name { flex: 1; min-width: 0; } .tests li { flex-wrap: nowrap; align-items: flex-start; } .tests .pill { margin-left: auto; }
 .drawer-head .btn { align-self: flex-start; flex: none; }
+
+.chal-by { font-weight: 650; font-size: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chal-guard { border-color: var(--bad); background: var(--bad-bg); padding-right: 8px; border-radius: 0 6px 6px 0; }
+.chal-verdict { font: 600 10.5px var(--mono); padding: 0 6px; border-radius: 4px; background: var(--panel-2); color: var(--text-2); }
+.v-holds { color: var(--good); } .v-weak { color: var(--warn); } .v-refuted { color: var(--bad); }
+.hyp-desc .ref { vertical-align: middle; margin: 0 2px; }
+.val-card-inconclusive { border-top-color: var(--warn); border-style: dashed; border-top-style: solid; }
+.ic { font: 0.92em var(--mono); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }

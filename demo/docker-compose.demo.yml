@@ -1,0 +1,41 @@
+# Fragment for the orchestrator to merge into the root docker-compose.yml.
+# Uses root service names (postgres, rabbitmq, otel-collector) and env vars from .env.example.
+# The otel-collector dependency is soft (no depends_on) so the demo also runs before Team B lands.
+services:
+  demo-db-init:
+    build: ./demo/db
+    environment:
+      APP_DATABASE_URL: ${APP_DATABASE_URL}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+  demo-api:
+    build: ./demo/api
+    environment:
+      APP_DATABASE_URL: ${APP_DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-demo}
+      SERVICE_VERSION: ${SERVICE_VERSION:-1.0.0}
+      FAULT_INJECTION_ENABLED: ${FAULT_INJECTION_ENABLED:-true}
+    ports: ["8000:8000"]
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+      demo-db-init: { condition: service_completed_successfully }
+  demo-worker:
+    build: ./demo/worker
+    environment:
+      APP_DATABASE_URL: ${APP_DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-demo}
+      SERVICE_VERSION: ${SERVICE_VERSION:-1.0.0}
+      FAULT_INJECTION_ENABLED: ${FAULT_INJECTION_ENABLED:-true}
+    restart: on-failure
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+      demo-db-init: { condition: service_completed_successfully }
+  demo-web:
+    build: ./demo/web
+    ports: ["5173:80"]
+    depends_on: [demo-api]

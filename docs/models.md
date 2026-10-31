@@ -2,9 +2,13 @@
 
 Providers: `gemma_api` (Gemini API `generateContent`), `gemma_local` (OpenAI-compatible server such as Ollama).
 Env: `MODEL_PROVIDER`, `MODEL_NAME` (required, no default), `MODEL_BASE_URL`, `MODEL_API_KEY`.
-**None of this has been verified against a live endpoint** (no API key available); request/response handling is
-unit-tested against `httpx.MockTransport` using the documented formats. An opt-in live test
-(`tests/test_models.py::test_live_integration`) runs only when `MODEL_API_KEY` is set.
+**Live verification (2026-10-31):** `gemma-4-31b-it` and `gemma-4-26b-a4b-it` were called through the Gemini API
+`generateContent` endpoint with the `x-goog-api-key` header; both returned text. The opt-in live test
+(`tests/test_models.py::test_live_integration`, runs only when `MODEL_API_KEY` is set) and a structured-output call passed,
+and a full investigation and remediation ran on `gemma-4-31b-it`. Observed: responses contain a `thought: true` part by default
+(the provider drops it); `generationConfig.thinkingConfig.thinkingLevel` (`minimal`|`high`) is accepted; calls can take
+minutes with thinking enabled, hence `MODEL_TIMEOUT_S` and bounded retries on timeout/429/5xx. `gemma_local` (OpenAI-compatible,
+Ollama-style) is **not** live-tested.
 
 ## gemma_api (Google AI Gemini API)
 - Docs say Gemma 4 model ids on the Gemini API are `gemma-4-31b-it` and `gemma-4-26b-a4b-it`; REST:

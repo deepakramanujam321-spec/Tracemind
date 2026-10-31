@@ -146,3 +146,20 @@ Graphify output is a *discovery aid*; claims must still cite `code:` refs resolv
 
 `tracemind/backend/tracemind/contracts.py` holds Pydantic models + Protocols (Span, LogRecord, TelemetryRepository,
 Signal, IncidentContext, Hypothesis, CodeIntelligence, ModelProvider). Teams import, never fork, these.
+
+## 13. As built (differences from the original contract, 2026-10-31)
+
+- **Patch format:** the remediation engine asks the model for exact search/replace `edits` (each `search` must match exactly once);
+  the diff is derived by `git` in the sandbox copy. A unified `diff` is still accepted. LLM-written unified diffs failed
+  `git apply --check` in our first live run, which is why this changed.
+- **Investigation outcome:** `investigations.outcome` stores the adjudicator's certainty (`confirmed|suspected|inconclusive`);
+  per-hypothesis `validation_status` stays `supported|rejected|inconclusive`.
+- **Remediation statuses:** `pending` (shown as `running` by the API) → `patch_generated` → `tested` → `verified`, or `failed`.
+  `verified` requires the sandbox suite AND the scenario regression test to exit 0; the suite is `TRACEMIND_SANDBOX_SUITE`
+  (offline-capable tests only, because the sandbox has `--network none`).
+- **API shapes** are adapted for the UI in `tracemind/backend/tracemind/api/views.py` (types in `tracemind/web/src/api/types.ts`).
+- **Jobs** run in bounded in-process threads (`TRACEMIND_MAX_CONCURRENT_JOBS`); rows older than `TRACEMIND_JOB_TIMEOUT_S` are
+  failed at backend start (`Service.reap_stale_jobs`). This is not a durable queue.
+- **Compose:** all published ports bind to `127.0.0.1`. The Docker socket exists only in `docker-compose.remediation.yml`.
+- **Demo repo:** TraceMind investigates a standalone git snapshot of `demo/` (`scripts/prepare_demo_repo.sh`), not the TraceMind repo itself.
+- **Scope not built:** metrics ingestion, GitHub PR creation, authentication, a durable job queue.

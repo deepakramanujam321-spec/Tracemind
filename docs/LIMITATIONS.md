@@ -8,7 +8,7 @@ Statuses: IMPLEMENTED / PARTIAL / NOT IMPLEMENTED. Anything unverified is marked
 | Multi-tenancy | NOT IMPLEMENTED | Single tenant; one shared set of tables, no tenant column assumed in the API. |
 | Load / scale | Not tested | No load test exists in `tracemind/backend/tests`. Storage is one Postgres instance; the repository is behind a Protocol so another store could replace it (`docs/ARCHITECTURE.md` section 4), but none exists. |
 | Model quality | Dependency | Hypotheses and patches are only as good as the configured model. Guards (evidence-ref resolution, patch validation, test verification) reject some bad output but cannot make a weak model correct. |
-| Model API (Gemma) | Unverified | `docs/models.md` states provider handling was never checked against a live endpoint (unit-tested with mocked HTTP); availability, cost and quotas of the Gemini API are outside this repo, and the Gemma docs page is noted as deprecated in favour of newer docs. Model ids are owner-supplied. |
+| Model API (Gemma) | PARTIAL | Live-verified with `gemma-4-31b-it` through the Gemini API (see `docs/models.md`); the local OpenAI-compatible provider is NOT live-tested. Availability, cost, quotas and latency (minutes per investigation with thinking enabled) depend on the provider, and results vary with model quality. |
 | Structured output | PARTIAL | JSON-in-prompt plus Pydantic validation and bounded retry (default 2); no provider-native schema enforcement. |
 | Tool calling | NOT IMPLEMENTED | `generate_with_tools` is not implemented; `supports_tools=False` for both providers. |
 | GitHub PR creation | NOT IMPLEMENTED | Approval only sets `approved_at` (`api/routes.py`). Nothing is pushed or opened. |

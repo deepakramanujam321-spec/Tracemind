@@ -1,91 +1,143 @@
 # TraceMind
 
-**From distributed failure to verified fix.**
+### From distributed failure to verified fix.
 
-TraceMind is an open-source incident-investigation tool. It ingests standard **OpenTelemetry** traces and logs,
-reconstructs what happened across services, has several AI agents investigate competing root-cause hypotheses
-(with a skeptic that tries to refute them), connects the runtime evidence to the **source code**, proposes a patch,
-and **tests that patch in an isolated Docker sandbox**. A human reviews the result. Nothing is merged automatically.
+![License: MIT](https://img.shields.io/badge/License-MIT-green) ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white) ![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-OTLP-425CC7?logo=opentelemetry&logoColor=white) ![Gemma 4](https://img.shields.io/badge/Gemma-4-4285F4) ![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
-> Hackathon MVP. It works end to end on one deterministic incident and is **not production-ready**.
-> Read [Limitations](#limitations) before judging claims. Status words used below:
-> **VERIFIED** = we ran it and have the output, **IMPLEMENTED** = code exists but the full workflow was not validated,
-> **NOT IMPLEMENTED** = does not exist.
+TraceMind is an open-source AI incident investigation and remediation tool. It connects **OpenTelemetry runtime evidence**
+(traces and logs) to **source-code analysis**, generates a targeted fix, and **validates it with regression tests in an
+isolated Docker sandbox**. Several model-backed agents form and challenge root-cause hypotheses, and every claim they make
+must point at a stored span, log or real source lines.
 
-## Why
+The problem is a familiar one. When a failure crosses services, queues and retries, an engineer has to correlate traces,
+logs, message redeliveries, service dependencies and code by hand, then implement a fix and prove it did not break
+anything. TraceMind automates the legwork and keeps the proof. The monitored application needs **no TraceMind SDK**:
+anything that exports standard OTLP/HTTP (protobuf) traces and logs can be investigated.
 
-A modern failure spans services, queues, retries and redeliveries. Engineers correlate traces, logs and code by hand,
-guess a cause, then hope the fix works. TraceMind connects *runtime evidence* to *source code* to *a tested fix*,
-and it is built to say **"inconclusive"** rather than assert a root cause the evidence does not support.
+> Hackathon MVP. It works end to end on one deterministic incident and is **not production-ready**. See [Limitations](#limitations).
 
-TraceMind needs **no TraceMind-specific SDK** in the monitored application: any app that exports OTLP/HTTP
-(protobuf) traces and logs can be investigated.
+## How it works
 
-## What it does
+**Observe → Reconstruct → Investigate → Challenge → Locate → Fix → Verify**
 
-| Capability | Status |
+| Step | What happens |
 |---|---|
-| OTLP/HTTP protobuf ingestion of traces and logs, normalised into PostgreSQL (JSONB attributes preserved) | VERIFIED |
-| Deterministic correlation: trace tree, service edges, error/exception spans, log correlation, redelivery and duplicate-write detection, explicit "limitations" when telemetry is missing | VERIFIED |
-| Multi-agent investigation (LangGraph): Trace Investigator and Code Analyst form hypotheses **independently**, a Skeptic challenges them, an Adjudicator returns supported / rejected / inconclusive | VERIFIED live with Gemma 4 |
-| Evidence guard: every cited reference (`span:`, `event:`, `log:`, `sig:`, `code:`) must resolve to a stored record or real source lines, otherwise it is stripped and flagged | VERIFIED |
-| Graphify-assisted code discovery (AST graph), with a clearly labelled plain-source fallback | VERIFIED (Graphify backend used in live run) |
-| Patch generation (model proposes exact search/replace edits; TraceMind derives the diff) | VERIFIED live |
-| Isolated sandbox test run, statuses `patch_generated` → `tested` → `verified` (or `failed`) | VERIFIED |
-| React dashboard: Overview, Incident, Investigation, Remediation | VERIFIED against the real backend (headless Chrome) |
-| Metrics ingestion | NOT IMPLEMENTED |
-| GitHub pull-request creation | NOT IMPLEMENTED |
-| Authentication / multi-tenancy | NOT IMPLEMENTED |
+| **Observe** | The app exports standard OTLP traces and logs through an OpenTelemetry Collector; TraceMind stores them in PostgreSQL. |
+| **Reconstruct** | A deterministic correlation engine rebuilds the trace tree, service edges, error spans, redeliveries and duplicate writes, and states explicitly what telemetry is missing. |
+| **Investigate** | The Trace Investigator and the Code Analyst each form a hypothesis independently, so one cannot anchor the other. |
+| **Challenge** | A Skeptic tries to refute both hypotheses. An Adjudicator returns *supported*, *rejected* or *inconclusive*. |
+| **Locate** | Graphify-assisted code analysis ranks candidate files and symbols; every cited line range is re-checked against the real file. |
+| **Fix** | The model proposes exact search/replace edits; TraceMind applies them to an isolated copy of the repo and derives the diff. |
+| **Verify** | Tests run in a locked-down Docker sandbox, baseline versus after the patch. |
 
-![Incident view](docs/screenshots/incident.png)
-![Investigation view](docs/screenshots/investigation.png)
-![Verified remediation](docs/screenshots/remediation-verified.png)
+**The differentiator:** TraceMind never reports a fix as `verified` unless the sandbox tests actually passed.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Incident view](docs/screenshots/incident.png) | ![Investigation view](docs/screenshots/investigation.png) |
+| **Incident:** topology, signals, trace waterfall and logs reconstructed from telemetry. | **Investigation:** agent steps, both hypotheses, the skeptic's challenges and the adjudication. |
+| ![Verified remediation](docs/screenshots/remediation-verified.png) | ![Failed remediation](docs/screenshots/remediation-failed.png) |
+| **Remediation, verified:** the diff, each command with its exit code, and baseline versus after-patch results. | **Remediation, not verified:** a run whose fix did not verify. The UI shows the failure instead of claiming success. |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
   subgraph demo["Demo app (telemetry producer)"]
-    W[demo-web<br/>React] --> A[demo-api<br/>FastAPI]
-    A -- publish + traceparent --> Q[(RabbitMQ)]
-    Q --> K[demo-worker<br/>aio-pika]
-    K --> P[(PostgreSQL<br/>db: app)]
+    W[demo-web] --> A[demo-api]
+    A -- "publish + traceparent" --> Q[(RabbitMQ)]
+    Q --> K[demo-worker]
+    K --> P[(demo PostgreSQL)]
   end
-  A -. OTLP/HTTP .-> C[OpenTelemetry<br/>Collector]
-  K -. OTLP/HTTP .-> C
-  C -- OTLP protobuf --> T
+  A -. "OTel SDK" .-> C[OTel Collector]
+  K -. "OTel SDK" .-> C
+  C -- "OTLP/HTTP protobuf" --> T
 
   subgraph tm["TraceMind"]
-    T[tracemind-backend<br/>FastAPI] --> S[(PostgreSQL<br/>db: tracemind)]
-    T --> R[Correlation engine<br/>deterministic]
-    R --> L[LangGraph investigation<br/>Trace Investigator ‖ Code Analyst<br/>→ Skeptic → Adjudicator]
-    L <--> G[Gemma 4<br/>Gemini API]
-    L <--> X[Graphify + source reader]
+    UI[tracemind-web] --> T[tracemind-backend]
+    T --> S[(TraceMind PostgreSQL)]
+    T --> R[Correlation engine]
+    R --> L["LangGraph workflow:<br/>Trace Investigator ‖ Code Analyst<br/>→ Skeptic → Adjudicator"]
+    L <--> G["Gemma 4<br/>(Gemini API)"]
+    L <--> X[Graphify]
     L --> E[Remediation engine]
     E <--> G
-    E --> D[Docker sandbox<br/>no network, read-only,<br/>caps dropped]
-    UI[tracemind-web<br/>React] --> T
+    E --> D[Docker sandbox]
   end
-  X --- Rp[(Repository<br/>read-only)]
+  X --- Rp[(Repository, read-only)]
   E --- Rp
 ```
 
-Data flow: the demo app emits traces and logs (W3C trace context is propagated through RabbitMQ headers) →
-the Collector batches them → TraceMind stores and correlates them → an investigation reads the incident context,
-inspects source code, and returns evidence-backed hypotheses → the remediation engine applies a model-proposed edit to
-an **isolated copy** of the repository at the recorded commit and runs the tests in a locked-down container.
-The full contract is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The demo app emits traces and logs, propagating W3C trace context through RabbitMQ message headers. The Collector batches
+them and forwards OTLP to the TraceMind backend, which stores and correlates them. An investigation reads the incident
+context and the source code and returns evidence-backed hypotheses. The remediation engine applies a model-proposed edit to
+an **isolated copy** of the repository at the recorded commit and runs the tests in a container with no network. Full
+contract: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Technology stack
+Stack: React + TypeScript (Vite), Python 3.11+ / FastAPI, PostgreSQL 16, RabbitMQ 3.13, OpenTelemetry (Python SDK,
+Collector contrib 0.116.1), LangGraph, Gemma 4, Graphify, Docker Compose.
 
-React + TypeScript (Vite) · Python 3.11+ / FastAPI · PostgreSQL 16 · RabbitMQ 3.13 · OpenTelemetry (Python SDK,
-Collector contrib 0.116.1, OTLP/HTTP) · LangGraph · Gemma 4 via the Gemini API (provider abstraction; an OpenAI-compatible
-local provider such as Ollama is IMPLEMENTED but not live-tested) · Graphify (`graphifyy` on PyPI) · Docker / Docker Compose.
+## Why TraceMind is different
+
+1. **Standard OTLP.** No proprietary agent or SDK in the monitored app.
+2. **Evidence-backed reconstruction.** Signals come from deterministic code over stored spans and logs, not from a model's guess.
+3. **Independent hypotheses.** Trace and code analysis are formed separately, then compared.
+4. **A skeptic.** A dedicated agent tries to refute the hypotheses before anything is accepted.
+5. **An adjudicator that can say no.** It can reject, or return *inconclusive*, when the evidence does not support a root cause.
+6. **Graphify-assisted code investigation.** An AST code graph narrows where to look; cited lines are re-validated against real files.
+7. **Sandboxed remediation.** Patches run on a copy of the repo in an unprivileged container with `--network none`.
+8. **Verification only from real test results.** `verified` is set from sandbox test exit codes, never from model output.
+9. **No automatic production modification.** Nothing is merged or pushed; the original repository is only ever read.
+
+A root-cause explanation is useful. A fix with verified regression tests is more useful.
+
+## Hackathon technology integration
+
+### Gemma 4
+
+Gemma 4 does the model work at every reasoning step:
+
+| Role | Used for |
+|---|---|
+| Trace Investigator | Independent hypothesis from runtime evidence |
+| Code Analyst | Independent hypothesis from source code |
+| Skeptic | Challenges both hypotheses |
+| Adjudicator | Final supported / rejected / inconclusive verdict |
+| Remediation | Generates the code edits |
+
+- Live-verified with `gemma-4-31b-it` through the Gemini API `generateContent` endpoint.
+- Structured output is JSON-in-prompt with Pydantic validation and bounded retry; thinking parts are dropped from returned text.
+- Timeout (`MODEL_TIMEOUT_S`) and thinking level (`MODEL_THINKING_LEVEL`) are configurable.
+- An OpenAI-compatible local provider (`gemma_local`, for Ollama-style servers) is **implemented but not live-tested**.
+- Tool calling is **not implemented**.
+
+Details: [docs/models.md](docs/models.md).
+
+### Graphify
+
+Installed from PyPI as `graphifyy`. The backend builds an AST-only code graph with `graphify extract --code-only` and queries
+it to rank candidate symbols and files for the Code Analyst. Every cited line range is then re-validated against real file
+contents. If Graphify is unavailable, a clearly labelled plain-source fallback is used, and the UI and API report
+`code_backend` as `graphify` or `fallback`. In our live run it reported `graphify`. Graphify helps locate code; it does not
+prove a root cause.
+
+### Cloudways
+
+We researched Cloudways ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)). The full stack needs Docker, PostgreSQL and RabbitMQ, which
+the researched Cloudways environment does not document as available. **We did not deploy there and make no deployment claim.**
+The validated submission environment is Docker Compose. At most, the static frontend could be hosted on Cloudways.
+
+### Open-source AI
+
+Public repository under the MIT license. Standard OTLP in, documented contracts ([docs/](docs/)), evidence references that
+resolve to real records, a deterministic reproducible incident, testable remediation, and a [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Quickstart
 
-Prerequisites: Docker with Compose v2, Git, ~6 GB free disk, and a Gemini API key with access to Gemma 4
-(only needed for the investigation and remediation steps; ingestion, correlation and the UI work without it).
+Prerequisites: Docker with Compose v2, Git, ~6 GB free disk, and a Gemini API key with access to Gemma 4 (needed only for
+investigation and remediation; ingestion, correlation and the UI work without it).
 
 ```bash
 git clone https://github.com/deepakramanujam321-spec/Tracemind.git
@@ -127,20 +179,26 @@ All ports are bound to `127.0.0.1` only:
 ./scripts/reproduce_incident.sh
 ```
 
-It posts one notification with the fault flag and prints the inbox. Expected: `DUPLICATE REPRODUCED`
-(one logical notification, two inbox rows). You can also tick "Inject ack-failure" in the demo app at :5173.
+It posts one notification with the fault flag and prints the inbox. Expected: `DUPLICATE REPRODUCED` (one logical
+notification, two inbox rows). You can also tick "Inject ack-failure" in the demo app at :5173.
 
 ### 2. Reconstruct and investigate
 
-Open http://localhost:5174 → **Run detection** → open the incident (topology, signals, trace waterfall, logs) →
-**Start investigation**. This calls Gemma and takes a few minutes. The Investigation page shows the agent steps,
-both hypotheses, the skeptic's challenges, the evidence guard's rejections and the adjudication. Click any reference chip
-to resolve it to the real span, log or source lines.
+Open http://localhost:5174, then:
+
+1. **Run detection.**
+2. Open the incident (topology, signals, trace waterfall, logs).
+3. **Start investigation.** This calls Gemma and takes a few minutes.
+
+The Investigation page shows the agent steps, both hypotheses, the skeptic's challenges, the evidence guard's rejections and
+the adjudication. Click any reference chip to resolve it to the real span, log or source lines.
 
 ### 3. Remediate (opt-in, needs the Docker socket)
 
 Remediation runs tests in sibling containers, so it needs a separate overlay that mounts the Docker socket into the backend.
-**That is root-equivalent on the host: use it only on a trusted dev machine** (see [docs/SECURITY.md](docs/SECURITY.md)).
+
+> **Warning:** the Docker socket is root-equivalent on the host. Use this overlay only on a trusted dev machine
+> ([docs/SECURITY.md](docs/SECURITY.md)).
 
 ```bash
 ./scripts/prepare_demo_repo.sh        # snapshot demo/ into .tracemind/demo-repo (the repo TraceMind investigates)
@@ -151,8 +209,13 @@ curl -s -XPOST localhost:8100/api/repositories -H 'content-type: application/jso
   -d "{\"path\":\"$PWD/.tracemind/demo-repo\",\"name\":\"demo-notifications\"}"
 ```
 
-Then run the investigation (step 2) and press **Generate fix** on the Investigation page. The Remediation page shows the diff,
-every command with its exit code, baseline vs. after-patch test results, and the status.
+> **Keep passing both `-f` files** (or `export COMPOSE_FILE=docker-compose.yml:docker-compose.remediation.yml`) on every later
+> `docker compose` command. A plain `docker compose up` recreates the backend from the default file, which silently drops the
+> overlay (no Docker socket, no repo mount). Registration is restricted to `TRACEMIND_REPO_ROOTS`; a path outside it (for example
+> `/etc`) is rejected. The sandbox only runs the offline-capable tests listed in `TRACEMIND_SANDBOX_SUITE`.
+
+Then run the investigation (step 2) and press **Generate fix** on the Investigation page. The Remediation page shows the
+diff, every command with its exit code, baseline versus after-patch test results, and the status.
 
 ### Whole lifecycle in one command
 
@@ -160,35 +223,65 @@ every command with its exit code, baseline vs. after-patch test results, and the
 ./scripts/e2e_lifecycle.sh
 ```
 
-Triggers the failure, detects the incident, investigates, remediates, asserts the status is `verified`, and checks the
-source repository is byte-identical afterwards. It makes real model calls (minutes, uses quota).
+Triggers the failure, detects the incident, investigates, remediates, asserts the status is `verified`, and checks the source
+repository is byte-identical afterwards. It makes real model calls (minutes, uses quota).
 
-## The sample incident
+## The incident TraceMind solves
 
 The demo is an in-app notification platform: React → FastAPI → RabbitMQ → worker → PostgreSQL.
 
-1. The worker consumes a message and **commits** the notification row.
-2. A deterministic fault (`x-fault: ack_failure`, honoured only when `FAULT_INJECTION_ENABLED=true`, only for the selected
-   message, only on first delivery) fails the worker **after the commit and before the ack**, and it nacks with requeue.
-3. RabbitMQ redelivers; the worker inserts again. The baseline has **no unique constraint and a plain `INSERT`**, so one
-   logical notification becomes two inbox rows. This bug is intentional and is the investigation target.
+1. The API publishes a notification message to RabbitMQ.
+2. The worker consumes and processes it.
+3. The worker commits the notification row to the database.
+4. A deterministic fault (`x-fault: ack_failure`, honoured only when `FAULT_INJECTION_ENABLED=true`, only for the selected
+   message, only on first delivery) makes the worker fail **after the commit and before the ack**, and it nacks with requeue.
+5. RabbitMQ redelivers the message.
+6. The baseline has no idempotency (no unique constraint, a plain `INSERT`), so the redelivery inserts a second row: one
+   logical notification, two inbox rows. This bug is intentional and is the investigation target.
 
-TraceMind sees: a producer span, a consumer span with an exception event, `messaging.rabbitmq.message.redelivered=true` on
-the second delivery, and two successful INSERT spans for the same `notification.id`. The correlation engine reports this as
-signals (`exception_event`, `message_redelivered`, `redelivery_duplicate_write`, ...) with evidence references. The agents
-then reason over those signals and over the worker source (found via Graphify). In our live run the adjudication was
-`confirmed`: an ack failure after commit plus missing idempotency. The generated fix added `UNIQUE` to `notification_id`
-and `ON CONFLICT (notification_id) DO NOTHING`, and the regression test passed in the sandbox.
+**Expected fix:** a `UNIQUE` constraint on `notification_id`, `INSERT ... ON CONFLICT (notification_id) DO NOTHING`, and a
+regression test.
 
-**Baseline vs. fixed are kept separate.** The baseline code stays faulty until a remediation is applied. The spec for the fix
-is `demo/tests/test_redelivery.py::test_redelivery_is_idempotent` (needs Postgres+RabbitMQ) and its offline twin
-`demo/tests/test_sandbox_regression.py::test_redelivery_is_idempotent_sandbox` (SQLite + a fake message, runs in the sandbox).
-Both carry the `injected_bug` marker, **fail at the baseline by design**, and must pass after the fix. They are never skipped
-or xfailed (an xfail would exit 0 and fake a verification).
+**What TraceMind sees:** a producer span, a consumer span with an exception event, `messaging.rabbitmq.message.redelivered=true`
+on the second delivery, and two successful INSERT spans for the same `notification.id`. The correlation engine reports these
+as signals (`exception_event`, `message_redelivered`, `redelivery_duplicate_write`, ...) with evidence references. The agents
+reason over those signals and over the worker source, found through Graphify. In our live run the adjudication was `confirmed`
+(ack failure after commit plus missing idempotency). The generated fix added `UNIQUE` and `ON CONFLICT DO NOTHING`, and the
+regression test passed in the sandbox.
+
+**Baseline versus fixed are kept separate.** The baseline code stays faulty until a remediation is applied. The spec for the
+fix is `demo/tests/test_redelivery.py::test_redelivery_is_idempotent` (needs Postgres and RabbitMQ) and its offline twin
+`demo/tests/test_sandbox_regression.py::test_redelivery_is_idempotent_sandbox` (SQLite and a fake message, runs in the
+sandbox). Both carry the `injected_bug` marker, **fail at the baseline by design**, and must pass after the fix. They are never
+skipped or xfailed, because an xfail would exit 0 and fake a verification. That baseline failure is a reproduction spec; the
+post-fix regression result is what decides `verified`.
+
+## Security and trust
+
+Implemented today (details and gaps in [docs/SECURITY.md](docs/SECURITY.md)):
+
+- Secrets only via environment; `.env` and `.env.*` are git-ignored, `.env.example` holds placeholders. Compose refuses to start
+  without `POSTGRES_PASSWORD`. No secret is passed to the frontend or baked into images. We scanned tracked files and git
+  history for credential patterns and found none.
+- All published ports bind to `127.0.0.1`.
+- Telemetry, logs and repository text are treated as **untrusted data**: delimited in prompts, forged delimiters neutralised,
+  and an evidence guard rejects references the agents did not actually have (prompt-injection test included).
+- Repository access is path-confined (no `..`, no symlink escape, no `.git`); registration can be restricted with `TRACEMIND_REPO_ROOTS`.
+- Patches are validated before use; the original repository is only ever read. Sandbox containers: not privileged, all
+  capabilities dropped, `no-new-privileges`, read-only root and source mount, `--network none`, CPU/memory/pid limits, non-root
+  user, no host environment, hard timeout. **Probed on a live container** (see Testing).
+- Nothing is merged or pushed automatically. "Human approval" means the explicit approve action on a verified remediation; PR
+  creation is not implemented.
+
+Known risks, stated plainly:
+
+- **No authentication or authorization** on the TraceMind API or OTLP endpoints. Do not expose them publicly.
+- **Docker socket:** the remediation overlay is opt-in because the socket is root-equivalent. Docker isolation shares the host
+  kernel and is not a production-grade sandbox boundary.
 
 ## Scalability
 
-Implemented knobs (all environment variables, see `.env.example`):
+Implemented knobs (environment variables, see `.env.example`):
 
 | Dimension | Mechanism |
 |---|---|
@@ -201,57 +294,42 @@ Implemented knobs (all environment variables, see `.env.example`):
 **Vertical:** give the backend, Postgres and Collector more CPU/RAM, then raise the pool and job limits together, keeping
 `replicas × pool` below Postgres `max_connections`.
 
-**Horizontal (architectural path, NOT load-tested):** the backend keeps its durable state in PostgreSQL (telemetry,
-incidents, investigations, hypotheses, remediations), so several backend replicas can share one database behind a load balancer;
-job rows are age-reaped, not owner-tracked, so this is safe across replicas. Workers are plain RabbitMQ consumers and can be
-run in multiples (`docker compose up -d --scale demo-worker=N` is untested). **Known gaps:** investigation jobs run in in-process threads
-(not a durable queue; a replica crash abandons its jobs until the reaper fails them), and the Docker-socket overlay ties remediation
-to one host. We have **no throughput or load-test numbers** and do not claim any.
+**Horizontal (architectural path, not load-tested):** durable state (telemetry, incidents, investigations, hypotheses,
+remediations) lives in PostgreSQL, so several backend replicas can share one database behind a load balancer; job rows are
+age-reaped, not owner-tracked. Workers are plain RabbitMQ consumers and can be run in multiples (`docker compose up -d --scale
+demo-worker=N` is untested).
 
-## Security
+**Not implemented / known gaps:** investigation jobs run in in-process threads (not a durable queue; a replica crash abandons
+its jobs until the reaper fails them), and the Docker-socket overlay ties remediation to one host. We have **no throughput or
+load-test numbers** and do not claim any.
 
-Implemented today (details and gaps in [docs/SECURITY.md](docs/SECURITY.md)):
-
-- Secrets only via environment; `.env` and `.env.*` are git-ignored, `.env.example` holds placeholders. Compose refuses to start
-  without `POSTGRES_PASSWORD`. No secret is passed to the frontend or baked into images. We scanned tracked files and git history
-  for credential patterns and found none.
-- All published ports bind to `127.0.0.1`.
-- Telemetry, logs and repository text are treated as **untrusted data**: delimited in prompts, forged delimiters neutralised,
-  and an evidence guard rejects references the agents did not actually have (prompt-injection test included).
-- Repository access is path-confined (no `..`, no symlink escape, no `.git`); registration can be restricted with `TRACEMIND_REPO_ROOTS`.
-- Patches are validated before use; the original repository is only ever read. Sandbox containers: not privileged, all capabilities
-  dropped, `no-new-privileges`, read-only root and source mount, `--network none`, CPU/memory/pid limits, non-root user, no host
-  environment, hard timeout. **Probed on a live container** (see Testing).
-- Nothing is merged or pushed automatically; approval is an explicit human action; PR creation is not implemented.
-- **No authentication or authorization** on the TraceMind API or OTLP endpoints. Do not expose them publicly.
-- **Docker socket risk:** the remediation overlay is opt-in because the socket is root-equivalent. Docker isolation is not a
-  production-grade sandbox boundary (shared kernel).
-
-## Testing
+## Testing and verification
 
 ```bash
 ./scripts/test_all.sh
 ```
 
-runs the backend suite (ingest, store, correlation, investigation, models, code, remediation incl. a real Docker sandbox), the
-frontend build, the demo integration tests (throwaway Postgres/RabbitMQ containers), and then asserts the `injected_bug` specs
-**fail** at the baseline. Optional live-model test: `MODEL_API_KEY=... pytest tests/test_models.py -k live`.
-
-Results from our final run are in [Verification results](#verification-results).
-
-## Verification results
+Runs the backend suite (ingest, store, correlation, investigation, models, code, remediation including a real Docker sandbox),
+the frontend build, the demo integration tests (throwaway Postgres/RabbitMQ containers), and then asserts the `injected_bug`
+specs **fail** at the baseline. Optional live-model test: `MODEL_API_KEY=... pytest tests/test_models.py -k live`. The
+end-to-end lifecycle script is described in the Quickstart.
 
 RESULTS_PLACEHOLDER
 
 ## Limitations
 
-See [docs/LIMITATIONS.md](docs/LIMITATIONS.md). In short: no authn/authz, single tenant, not load-tested, results depend on
-model quality and API availability/cost, traces and logs only (no metrics), no GitHub PR creation, investigation jobs are
-in-process threads, the sandbox only runs tests that work offline, and Docker isolation is not a production boundary.
-**Cloudways:** the full stack cannot run there as-is (managed PHP/Node hosting, no documented Docker or RabbitMQ support);
-see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the researched plan. No deployment was performed.
+Full table: [docs/LIMITATIONS.md](docs/LIMITATIONS.md). In short:
 
-## Contributing and license
+- No authn/authz, single tenant, no TLS or rate limiting, not load-tested.
+- Results depend on model quality and on API availability and cost; telemetry is sent to the model provider with no redaction.
+- Traces and logs only (no metrics); no GitHub PR creation; tool calling is not implemented.
+- Correlation signals were built around the demo scenario; generality to other failure classes is untested.
+- Investigation jobs are in-process threads; in-flight jobs are lost on restart and reaped as failed later.
+- The sandbox runs with no network, so only offline tests can run there.
+- Docker isolation is not a production boundary.
+- Cloudways: no deployment was performed (see above).
+
+## Contributing & license
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Report bugs via GitHub issues; report vulnerabilities privately as described in
 [docs/SECURITY.md](docs/SECURITY.md). Layout: `demo/` (telemetry producer with the injected bug), `tracemind/backend`

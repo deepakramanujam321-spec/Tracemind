@@ -79,7 +79,7 @@ async def main():
     conn = await psycopg.AsyncConnection.connect(os.environ["APP_DATABASE_URL"])
     mq = await aio_pika.connect_robust(os.environ["RABBITMQ_URL"])
     channel = await mq.channel()
-    await channel.set_qos(prefetch_count=1)
+    await channel.set_qos(prefetch_count=int(os.getenv("WORKER_PREFETCH", "1")))
     queue = await channel.declare_queue(QUEUE, durable=True)
     log.info("worker consuming %s", QUEUE)
     async with queue.iterator() as it:

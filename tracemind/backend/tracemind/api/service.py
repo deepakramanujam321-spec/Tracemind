@@ -12,7 +12,7 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from tracemind.api.stores import PgInvestigationStore, PgRemediationStore
-from tracemind.code import RepoRegistry, build_code_intelligence, parse_code_ref, resolve_code_ref
+from tracemind.code import RepoError, RepoRegistry, build_code_intelligence, parse_code_ref, resolve_code_ref
 from tracemind.contracts import IncidentContext
 from tracemind.correlation import EvidenceResolver, detect_incidents
 from tracemind.investigation.graph import run_investigation
@@ -21,6 +21,8 @@ from tracemind.models.factory import provider_from_env
 from tracemind.remediation.engine import RemediationEngine
 
 log = logging.getLogger("tracemind.service")
+# Bounded concurrency for long-running LLM jobs (per process; scale out by running more replicas).
+_JOBS = threading.BoundedSemaphore(int(os.environ.get("TRACEMIND_MAX_CONCURRENT_JOBS", "2")))
 
 
 class Service:
@@ -64,6 +66,11 @@ class Service:
 
     # ---- repositories
     def register_repo(self, path: str, name: str | None = None) -> dict[str, Any]:
+        roots = [r for r in os.environ.get("TRACEMIND_REPO_ROOTS", "").split(os.pathsep) if r]
+        if roots:  # optional allowlist: only repositories under these roots may be registered
+            real = Path(path).resolve()
+            if not any(real == Path(r).resolve() or Path(r).resolve() in real.parents for r in roots):
+                raise RepoError("repository path is outside the allowed roots (TRACEMIND_REPO_ROOTS)")
         info = self.registry.register(path)
         rid = info.repo_id
         with self.pool.connection() as c:
@@ -114,6 +121,10 @@ class Service:
         return inv
 
     def _run_investigation(self, inv: str, ctx: IncidentContext, repo_id: str | None) -> None:
+        with _JOBS:
+            self._run_investigation_locked(inv, ctx, repo_id)
+
+    def _run_investigation_locked(self, inv: str, ctx: IncidentContext, repo_id: str | None) -> None:
         try:
             provider = provider_from_env()
             code = build_code_intelligence(self.registry, self.graph_root, repo_id) if repo_id else None
@@ -154,6 +165,10 @@ class Service:
         return rid
 
     def _run_remediation(self, rid: str, inv: dict[str, Any], repo: Any) -> None:
+        with _JOBS:
+            self._run_remediation_locked(rid, inv, repo)
+
+    def _run_remediation_locked(self, rid: str, inv: dict[str, Any], repo: Any) -> None:
         store = PgRemediationStore(self.pool)
         try:
             adj = inv["adjudication"] or {}
@@ -185,6 +200,20 @@ class Service:
             log.exception("remediation %s failed", rid)
             with self.pool.connection() as c:
                 c.execute("UPDATE remediations SET status='failed', error=%s WHERE id=%s", (str(e), rid))
+
+    def reap_stale_jobs(self) -> int:
+        """Jobs run in in-process threads, so a crash/restart orphans their rows. Fail rows older than the timeout
+        (age-based, so it is safe when several replicas share the database)."""
+        age = int(os.environ.get("TRACEMIND_JOB_TIMEOUT_S", "1800"))
+        n = 0
+        with self.pool.connection() as c:
+            n += c.execute("UPDATE investigations SET status='failed', finished_at=now(), "
+                           "error='abandoned: no completion within job timeout (backend restart or crash)' "
+                           "WHERE status='running' AND started_at < now() - make_interval(secs => %s)", (age,)).rowcount
+            n += c.execute("UPDATE remediations SET status='failed', "
+                           "error='abandoned: no completion within job timeout (backend restart or crash)' "
+                           "WHERE status IN ('pending','patch_generated') AND created_at < now() - make_interval(secs => %s)", (age,)).rowcount
+        return n
 
     # ---- read models
     def services_info(self) -> list[dict[str, Any]]:

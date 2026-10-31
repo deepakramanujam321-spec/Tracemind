@@ -68,6 +68,7 @@ class FakeMessage:
         self.calls.append(f"nack(requeue={requeue})")
 
 
+@pytest.mark.injected_bug
 def test_redelivery_is_idempotent_sandbox():
     async def scenario():
         conn, nid = AsyncSqlite(), "11111111-1111-4111-8111-111111111111"

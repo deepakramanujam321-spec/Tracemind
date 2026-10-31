@@ -1,4 +1,5 @@
 """Reproduces the demo incident. test_redelivery_is_idempotent FAILS at the baseline commit."""
+import pytest
 from conftest import pump_worker
 
 PAYLOAD = {"user_id": "u-1", "title": "Welcome", "body": "Hello there"}
@@ -16,6 +17,7 @@ async def test_no_fault_single_row(api_client, db, channel):
     assert len(await _rows(db)) == 1
 
 
+@pytest.mark.injected_bug
 async def test_redelivery_is_idempotent(api_client, db, channel):
     """One logical notification => exactly one row, even when the ack fails after commit."""
     r = await api_client.post("/api/notifications", json={**PAYLOAD, "fault": "ack_failure"})

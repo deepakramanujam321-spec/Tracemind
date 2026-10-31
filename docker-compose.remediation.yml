@@ -1,0 +1,24 @@
+# OPT-IN overlay that lets tracemind-backend run remediation tests in sibling sandbox containers.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.remediation.yml up -d --build
+#
+# SECURITY: this mounts the host Docker socket into tracemind-backend, which is equivalent to root on the host.
+# Use only on a trusted local/dev machine, never on a public-facing deployment (see docs/SECURITY.md).
+# The sandbox containers themselves are unprivileged: --network none, read-only rootfs, all caps dropped,
+# no-new-privileges, cpu/mem/pids limits, non-root user, read-only source mount, no host env.
+#
+# Requires TRACEMIND_HOST_ROOT (absolute path of this checkout) in .env, because sandbox `docker run -v` paths are
+# resolved by the HOST daemon, so the repo/sandbox directories are mounted at identical absolute paths.
+# Prepare once: scripts/prepare_demo_repo.sh && scripts/build_sandbox_image.sh
+services:
+  tracemind-backend:
+    build:
+      context: ./tracemind/backend
+      dockerfile: Dockerfile.remediation
+    environment:
+      TRACEMIND_REPO_ROOTS: ${TRACEMIND_HOST_ROOT}/.tracemind/demo-repo
+      TRACEMIND_SANDBOX_ROOT: ${TRACEMIND_HOST_ROOT:?set TRACEMIND_HOST_ROOT in .env}/.tracemind/sandbox
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${TRACEMIND_HOST_ROOT}/.tracemind/demo-repo:${TRACEMIND_HOST_ROOT}/.tracemind/demo-repo:ro
+      - ${TRACEMIND_HOST_ROOT}/.tracemind/sandbox:${TRACEMIND_HOST_ROOT}/.tracemind/sandbox

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,10 +19,11 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     dsn = default_dsn()
     migrate(dsn)
-    repo = PostgresTelemetryRepository(dsn)
+    repo = PostgresTelemetryRepository(dsn, max_size=int(os.environ.get("TRACEMIND_DB_POOL_MAX", "8")))
     app.state.telemetry_repo = repo
     ingest.configure(repo)
     app.state.service = Service(repo)
+    app.state.service.reap_stale_jobs()
     yield
     repo.close()
 

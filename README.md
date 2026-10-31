@@ -16,6 +16,30 @@ anything that exports standard OTLP/HTTP (protobuf) traces and logs can be inves
 
 > Hackathon MVP. It works end to end on one deterministic incident and is **not production-ready**. See [Limitations](#limitations).
 
+## Project at a glance
+
+| | |
+|---|---|
+| **Repository** | https://github.com/deepakramanujam321-spec/Tracemind (MIT) |
+| **How to run it** | **Locally with Docker Compose.** There is no hosted deployment and no live URL. A full-stack Cloudways deployment is not supported by the current environment (the stack needs Docker, PostgreSQL and RabbitMQ; see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)). |
+| **Demo** | There is no recorded demo video. **The local quickstart below is the demo**: about five minutes, and the first four steps need no model API key. |
+| **Stack** | React + TypeScript, Python / FastAPI, PostgreSQL, RabbitMQ, OpenTelemetry + Collector, LangGraph, Gemma 4, Graphify, Docker Compose (badges above) |
+| **See it first** | [Screenshots](#screenshots) of real runs, then the [architecture diagram](#architecture) |
+| **Deeper docs** | [Architecture](docs/ARCHITECTURE.md) · [Security](docs/SECURITY.md) · [Limitations](docs/LIMITATIONS.md) · [Models](docs/models.md) · [Deployment assessment](docs/DEPLOYMENT.md) · [Contributing](CONTRIBUTING.md) |
+
+### Try it in five minutes
+
+```bash
+git clone https://github.com/deepakramanujam321-spec/Tracemind.git && cd Tracemind
+cp .env.example .env                  # placeholders work as-is; set POSTGRES_PORT if 5432 is taken
+docker compose up -d --build          # first build takes a few minutes; everything binds to 127.0.0.1
+./scripts/reproduce_incident.sh       # fires the deterministic fault: prints "DUPLICATE REPRODUCED"
+```
+
+Then open **http://localhost:5174**, press **Run detection**, and open the incident: topology, deterministic signals, trace waterfall
+and logs, rebuilt from the OpenTelemetry data the demo app just emitted. Running the AI investigation and the sandboxed fix needs a
+Gemma API key in `.env` (and the opt-in remediation overlay); see [Quickstart](#quickstart) for those steps.
+
 ## How it works
 
 **Observe → Reconstruct → Investigate → Challenge → Locate → Fix → Verify**

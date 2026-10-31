@@ -134,3 +134,15 @@ One agent per branch/worktree. Orchestrator merges to `main` after tests. Conven
 
 Docker daemon must be running for compose/sandbox. Graphify not installed locally (fallback to labelled plain
 source inspection). Gemma endpoint/model id are owner-supplied.
+
+## 11. Graphify (installed: `uv tool install graphifyy`, PyPI project of Graphify-Labs/graphify, CLI `graphify`)
+
+Verified CLI (no LLM/API key needed for code graphs): `graphify update <path>` (AST extract → `<path>/graphify-out/graph.json`),
+`graphify query "<q>" --graph <graph.json>`, `graphify explain "<node>"`, `graphify path "A" "B"`, `graphify affected "<node>"`,
+`graphify god-nodes --json`. Exit codes for query/path/explain: 0 ok, 3 ambiguous, 4 no match. Do not run `graphify install`.
+Graphify output is a *discovery aid*; claims must still cite `code:` refs resolved against real file contents.
+
+## 12. Shared Python contracts
+
+`tracemind/backend/tracemind/contracts.py` holds Pydantic models + Protocols (Span, LogRecord, TelemetryRepository,
+Signal, IncidentContext, Hypothesis, CodeIntelligence, ModelProvider). Teams import, never fork, these.

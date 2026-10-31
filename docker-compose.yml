@@ -1,4 +1,5 @@
-# Skeleton owned by the orchestrator/Team F. Service blocks for demo-* and tracemind-* are added by their teams' branches.
+# TraceMind + demo stack. `cp .env.example .env` first.
+# Remediation (Docker sandbox) needs the Docker socket: add  -f docker-compose.remediation.yml  (see README).
 services:
   postgres:
     image: postgres:16
@@ -20,5 +21,67 @@ services:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
       retries: 10
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.1
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes: ["./infra/collector/config.yaml:/etc/otelcol/config.yaml:ro"]
+    ports: ["4318:4318"]
+    depends_on: [tracemind-backend]
+
+  # ---- TraceMind
+  tracemind-backend:
+    build: ./tracemind/backend
+    environment:
+      TRACEMIND_DATABASE_URL: ${TRACEMIND_DATABASE_URL}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-}
+      MODEL_NAME: ${MODEL_NAME:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      TRACEMIND_REGRESSION_TEST: tests/test_sandbox_regression.py
+    ports: ["8100:8100"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8100/healthz"]
+      interval: 5s
+      retries: 20
+  tracemind-web:
+    build: ./tracemind/web
+    ports: ["5174:5174"]
+    depends_on: [tracemind-backend]
+
+  # ---- Demo application (the telemetry producer; TraceMind does not depend on it)
+  demo-db-init:
+    build: ./demo/db
+    environment:
+      APP_DATABASE_URL: ${APP_DATABASE_URL}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+  demo-api:
+    build: ./demo/api
+    environment: &demo-env
+      APP_DATABASE_URL: ${APP_DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-demo}
+      SERVICE_VERSION: ${SERVICE_VERSION:-1.0.0}
+      FAULT_INJECTION_ENABLED: ${FAULT_INJECTION_ENABLED:-true}
+    ports: ["8000:8000"]
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+      demo-db-init: { condition: service_completed_successfully }
+  demo-worker:
+    build: ./demo/worker
+    environment: *demo-env
+    restart: on-failure
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+      demo-db-init: { condition: service_completed_successfully }
+  demo-web:
+    build: ./demo/web
+    ports: ["5173:80"]
+    depends_on: [demo-api]
 volumes:
   pgdata:

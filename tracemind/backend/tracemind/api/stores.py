@@ -20,7 +20,7 @@ class PgInvestigationStore:
         with self.pool.connection() as c:
             c.execute(
                 "INSERT INTO agent_steps (investigation_id, agent, status, summary, output, finished_at) "
-                "VALUES (%s,%s,%s,%s,%s, CASE WHEN %s IN ('completed','failed','done') THEN now() END)",
+                "VALUES (%s,%s,%s,%s,%s, CASE WHEN %s IN ('completed','failed','skipped') THEN now() END)",
                 (investigation_id, step["agent"], step["status"], step.get("summary"),
                  Jsonb(json.loads(json.dumps(extra, default=str))), step["status"]))
 
@@ -50,13 +50,13 @@ class PgRemediationStore:
     def record_command(self, remediation_id: str, run: CommandRun) -> None:
         with self.pool.connection() as c:
             c.execute(
-                "INSERT INTO command_runs (remediation_id, command, exit_code, stdout, stderr, started_at, duration_ms) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                (remediation_id, " ".join(run.command), run.exit_code, run.stdout, run.stderr,
+                "INSERT INTO command_runs (remediation_id, phase, command, exit_code, stdout, stderr, started_at, duration_ms) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                (remediation_id, run.phase, " ".join(run.command), run.exit_code, run.stdout, run.stderr,
                  run.started_at, int(run.duration_ms)))
 
     def set_status(self, remediation_id: str, status: str, **fields: object) -> None:
-        summary = {k: v for k, v in fields.items() if k.endswith("_exit")}
+        summary = {k: v for k, v in fields.items() if k.endswith("_exit") or k == "source_refs"}
         with self.pool.connection() as c:
             c.execute(
                 "UPDATE remediations SET status=%s, test_summary = COALESCE(test_summary,'{}'::jsonb) || %s WHERE id=%s",

@@ -1,0 +1,1 @@
+ALTER TABLE command_runs ADD COLUMN IF NOT EXISTS phase TEXT;

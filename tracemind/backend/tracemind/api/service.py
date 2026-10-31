@@ -114,6 +114,9 @@ class Service:
         try:
             provider = provider_from_env()
             code = build_code_intelligence(self.registry, self.graph_root, repo_id) if repo_id else None
+            if code is not None:
+                with self.pool.connection() as c:
+                    c.execute("UPDATE repositories SET graph_status=%s WHERE id=%s", (code.backend, repo_id))
             deps = InvestigationDeps(
                 provider=provider,
                 resolve=lambda ref: self.resolve_ref(ref) is not None,
@@ -157,6 +160,7 @@ class Service:
             code_refs = [r for r in refs if r.startswith("code:")]
             from tracemind.contracts import CodeFinding
             findings = [CodeFinding(ref=r, note="cited by root-cause hypothesis") for r in code_refs]
+            store.set_status(rid, "pending", source_refs=code_refs)
             engine = RemediationEngine(provider_from_env(), store, self.sandbox_root,
                                        image=os.environ.get("TRACEMIND_SANDBOX_IMAGE"))
             res = engine.run(repo.path, repo.head_sha, adj.get("summary", ""), refs, findings,
@@ -168,10 +172,25 @@ class Service:
                 else:
                     c.execute("UPDATE remediations SET test_summary = COALESCE(test_summary,'{}'::jsonb) || %s WHERE id=%s",
                               (Jsonb({"tests_passed": res.tests_passed, "scenario_regression_passed": res.regression_passed,
-                                      "baseline_reproduced": res.baseline_reproduced, "explanation": res.explanation}), rid))
+                                      "baseline_reproduced": res.baseline_reproduced, "explanation": res.explanation,
+                                      "source_refs": code_refs}), rid))
                     if res.status == "verified":
                         c.execute("UPDATE incidents SET status='remediated' WHERE id=(SELECT incident_id FROM investigations WHERE id=%s)", (inv["id"],))
         except Exception as e:
             log.exception("remediation %s failed", rid)
             with self.pool.connection() as c:
                 c.execute("UPDATE remediations SET status='failed', error=%s WHERE id=%s", (str(e), rid))
+
+    # ---- read models
+    def services_info(self) -> list[dict[str, Any]]:
+        return self.q(
+            "SELECT s.name, s.version, s.environment, s.last_seen, "
+            "COUNT(p.span_id)::int AS span_count, COUNT(p.span_id) FILTER (WHERE p.status_code='ERROR')::int AS error_count "
+            "FROM services s LEFT JOIN spans p ON p.service_name = s.name GROUP BY s.name ORDER BY s.name")
+
+    def edges(self) -> list[list[str]]:
+        seen: dict[tuple[str, str], None] = {}
+        for r in self.q("SELECT context FROM incidents"):
+            for a, b in r["context"].get("edges", []):
+                seen[(a, b)] = None
+        return [list(e) for e in seen]

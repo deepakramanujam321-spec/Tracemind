@@ -5,7 +5,7 @@
 # demo tests that need Postgres must use sqlite/fakes to be runnable in the sandbox).
 FROM python:3.12-slim
 # Demo-app deps (demo/worker/requirements.txt): the offline regression test imports the real worker module.
-RUN pip install --no-cache-dir pytest==8.3.4 aio-pika==9.4.3 'psycopg[binary]==3.2.3' \
+RUN pip install --no-cache-dir pytest==8.3.4 'setuptools<81' aio-pika==9.4.3 'psycopg[binary]==3.2.3' \
     opentelemetry-api==1.27.0 opentelemetry-sdk==1.27.0 opentelemetry-exporter-otlp-proto-http==1.27.0 \
     opentelemetry-instrumentation-psycopg==0.48b0 \
  && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sandbox

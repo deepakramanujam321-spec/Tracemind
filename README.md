@@ -314,7 +314,33 @@ the frontend build, the demo integration tests (throwaway Postgres/RabbitMQ cont
 specs **fail** at the baseline. Optional live-model test: `MODEL_API_KEY=... pytest tests/test_models.py -k live`. The
 end-to-end lifecycle script is described in the Quickstart.
 
-RESULTS_PLACEHOLDER
+Final runs on the submitted code (2026-10-31). Status words: VERIFIED = we ran it and saw this output.
+
+| Check | Command | Result |
+|---|---|---|
+| Backend suites: ingest, store, correlation, investigation (scripted model), models, code intelligence, remediation incl. **real Docker sandbox**, API service (repo-root allowlist, stale-job reaper) | `./scripts/test_all.sh` | **89 passed, 1 skipped.** The skip is the opt-in live-Gemma test (needs `MODEL_API_KEY`); it passed when run with a key: `pytest tests/test_models.py -k live` -> 1 passed. VERIFIED |
+| Demo integration tests (throwaway Postgres + RabbitMQ, `REQUIRE_SERVICES=1` so an unreachable service **fails** instead of skipping) | `./scripts/test_all.sh` | **5 passed, 0 skipped.** VERIFIED |
+| Injected-bug specs (`-m injected_bug`): `test_redelivery_is_idempotent` and its offline twin | `./scripts/test_all.sh` | **2 failed at the baseline, by design** (the duplicate reproduces). The script asserts they fail; after a fix they must pass (`EXPECT_FIXED=1`). Never skipped or xfailed. VERIFIED |
+| Frontend | `cd tracemind/web && npm ci && npm run build` (also run by the web Docker image build) | `tsc -b && vite build`, zero TypeScript errors. VERIFIED |
+| Dashboard against the real backend | headless Chrome (Playwright) over Overview, Incident, Investigation, Remediation, evidence drawer, loading/error/empty states, verified/tested/failed remediations | no console errors apart from intentional 404 tests. VERIFIED |
+| Whole lifecycle, live Gemma 4 | `./scripts/e2e_lifecycle.sh` | duplicate reproduced -> incident detected from OTLP telemetry -> investigation (`code_backend: graphify`, certainty `confirmed`) -> patch (`UNIQUE` on `notification_id` + `ON CONFLICT (notification_id) DO NOTHING`) applied in the sandbox copy -> baseline test **failed (exit 1)**, after-patch suite **passed (exit 0)**, regression **passed (exit 0)** -> status `verified`; source repository byte-identical afterwards. `LIFECYCLE OK`, exit 0. VERIFIED |
+
+**Negative paths (real demo repo, real Docker sandbox, in the backend suite):** a comment-only patch, an `ON CONFLICT` without the unique index, an
+unrelated edit, and a patch that fixes the scenario but breaks another test all end `tested`, never `verified`. A non-diff, a diff that
+does not apply, and diffs touching `../`, `.git`, or absolute paths are rejected (`failed` / no patch). A test that collects nothing does
+not count as a pass. A timeout kills the container (`exit_code: null`, reported as such) and leaves none behind. The source tree hash was
+unchanged in every case. VERIFIED.
+
+**Sandbox container probe** (`docker inspect` / `docker exec` on a live sandbox): not privileged, all capabilities dropped, `no-new-privileges`,
+read-only root and read-only source mount, no host environment variables, `--network none` (a connect attempt fails), 512 MiB / 1 CPU /
+128 pids, runs as uid 10001. VERIFIED.
+
+**Honest failure behavior, observed:** during development a remediation reported `failed` with the real error when (a) the model call timed
+out, (b) the model's unified diff did not apply (`git apply --check` failed; this is why patches are now search/replace edits), and
+(c) the backend container lacked the Docker CLI. Each was surfaced as `failed` instead of a success claim.
+
+**Not verified:** multi-replica operation, `docker compose up --scale demo-worker=N`, throughput/load, the local (Ollama-style) model provider,
+GitHub PR creation (not implemented), metrics ingestion (not implemented), any Cloudways deployment.
 
 ## Limitations
 

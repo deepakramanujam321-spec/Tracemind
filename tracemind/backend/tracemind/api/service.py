@@ -12,7 +12,7 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from tracemind.api.stores import PgInvestigationStore, PgRemediationStore
-from tracemind.code import RepoRegistry, build_code_intelligence, resolve_code_ref
+from tracemind.code import RepoRegistry, build_code_intelligence, parse_code_ref, resolve_code_ref
 from tracemind.contracts import IncidentContext
 from tracemind.correlation import EvidenceResolver, detect_incidents
 from tracemind.investigation.graph import run_investigation
@@ -31,6 +31,8 @@ class Service:
         self.sandbox_root = Path(os.environ.get("TRACEMIND_SANDBOX_ROOT", ".sandbox")).resolve()
         self.graph_root = Path(os.environ.get("TRACEMIND_GRAPH_ROOT", ".tracemind/graphs")).resolve()
         self.regression_test = os.environ.get("TRACEMIND_REGRESSION_TEST", "tests/test_sandbox_regression.py")
+        # Tests the sandbox runs offline (--network none). Tests needing Postgres/RabbitMQ cannot run there.
+        self.suite_paths = [p.strip() for p in os.environ.get("TRACEMIND_SANDBOX_SUITE", self.regression_test).split(",") if p.strip()]
 
     # ---- helpers
     def q(self, sql: str, params: tuple = ()) -> list[dict[str, Any]]:
@@ -52,6 +54,7 @@ class Service:
     def resolve_ref(self, ref: str) -> dict[str, Any] | None:
         if ref.startswith("code:"):
             try:
+                self.ensure_repo_loaded(parse_code_ref(ref)[0])  # repos persist in the DB; registry is per-process
                 r = resolve_code_ref(self.registry, ref)
             except Exception:
                 return None
@@ -164,7 +167,7 @@ class Service:
             findings = [CodeFinding(ref=r, note="cited by root-cause hypothesis") for r in code_refs]
             store.set_status(rid, "pending", source_refs=code_refs)
             engine = RemediationEngine(provider_from_env(), store, self.sandbox_root,
-                                       image=os.environ.get("TRACEMIND_SANDBOX_IMAGE"))
+                                       image=os.environ.get("TRACEMIND_SANDBOX_IMAGE"), suite_paths=self.suite_paths)
             res = engine.run(repo.path, repo.head_sha, adj.get("summary", ""), refs, findings,
                              self.regression_test, remediation_id=rid)
             with self.pool.connection() as c:

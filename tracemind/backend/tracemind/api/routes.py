@@ -86,10 +86,18 @@ def trace(incident_id: str, trace_id: str, request: Request) -> dict[str, Any]:
             "logs": [x.model_dump(mode="json") for x in s.repo.get_logs_for_trace(trace_id)]}
 
 
+def _sha(s: Service, c: dict[str, Any]) -> str | None:
+    try:
+        return s.registry.get(c.get("repo") or c.get("repo_id")).head_sha
+    except Exception:
+        return None
+
+
 @router.get("/evidence/{ref:path}")
 def evidence(ref: str, request: Request) -> dict[str, Any]:
     kind = ref.split(":", 1)[0]
-    r = svc(request).resolve_ref(ref)
+    s = svc(request)
+    r = s.resolve_ref(ref)
     if r is None:
         return {"ref": ref, "kind": kind if kind in ("span", "event", "log", "code", "sig") else "span", "resolved": False,
                 "title": "Unresolved reference", "record": None, "excerpt": None,
@@ -99,7 +107,7 @@ def evidence(ref: str, request: Request) -> dict[str, Any]:
         return {"ref": ref, "kind": "code", "resolved": True, "title": f'{c["path"]}:{c["start"]}-{c["end"]}',
                 "record": None, "error": None,
                 "excerpt": {"repo_id": c["repo"] if "repo" in c else c.get("repo_id"), "path": c["path"], "start_line": c["start"],
-                            "end_line": c["end"], "lines": c["text"].splitlines(), "sha": None}}
+                            "end_line": c["end"], "lines": c["text"].splitlines(), "sha": _sha(s, c)}}
     rec = r["record"]
     title = {"span": lambda: f'{rec.get("service_name")} · {rec.get("name")}', "event": lambda: f'event {rec.get("name")}',
              "log": lambda: f'log · {rec.get("service_name")}', "signal": lambda: rec.get("name", "signal")}[r["type"]]()

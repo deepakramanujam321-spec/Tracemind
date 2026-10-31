@@ -39,6 +39,12 @@ services:
       MODEL_BASE_URL: ${MODEL_BASE_URL:-}
       MODEL_API_KEY: ${MODEL_API_KEY:-}
       TRACEMIND_REGRESSION_TEST: tests/test_sandbox_regression.py
+      TRACEMIND_GRAPH_ROOT: /tmp/tracemind-graphs
+      GIT_CONFIG_COUNT: "1"            # read-only mount is owned by another uid
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: "*"
+    volumes:
+      - ./.tracemind/demo-repo:/workspace/demo-repo:ro
     ports: ["8100:8100"]
     depends_on:
       postgres: { condition: service_healthy }

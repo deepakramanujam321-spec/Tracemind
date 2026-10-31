@@ -1,0 +1,17 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: Install backend
+        run: python -m venv .venv && .venv/bin/pip install -q -e "tracemind/backend[dev]"
+      - name: Build sandbox image (needed by the real-Docker remediation tests)
+        run: ./scripts/build_sandbox_image.sh
+      - name: All suites (injected_bug specs are expected to fail at baseline; the script asserts that)
+        run: ./scripts/test_all.sh

@@ -22,8 +22,8 @@ docker run -d --rm --name $PG -e POSTGRES_PASSWORD=t -e POSTGRES_USER=tracemind 
 docker run -d --rm --name $MQ -p 56672:5672 rabbitmq:3.13 >/dev/null
 trap 'docker rm -f $PG $MQ >/dev/null 2>&1' EXIT
 for _ in $(seq 1 60); do docker exec $PG pg_isready -U tracemind >/dev/null 2>&1 && break; sleep 1; done
-for _ in $(seq 1 60); do docker exec $MQ rabbitmq-diagnostics -q ping >/dev/null 2>&1 && break; sleep 1; done
-export APP_DATABASE_URL=postgresql://tracemind:t@localhost:56432/app RABBITMQ_URL=amqp://guest:guest@localhost:56672/
+for _ in $(seq 1 90); do docker exec $MQ rabbitmq-diagnostics -q check_port_connectivity >/dev/null 2>&1 && break; sleep 1; done
+export REQUIRE_SERVICES=1 APP_DATABASE_URL=postgresql://tracemind:t@localhost:56432/app RABBITMQ_URL=amqp://guest:guest@localhost:56672/
 (cd demo && "$DPY" -m pytest -q tests -m "not injected_bug" ) || fail=1
 section "injected-bug specs (demo/tests, integration + offline sandbox variant)"
 if [ "${EXPECT_FIXED:-0}" = 1 ]; then

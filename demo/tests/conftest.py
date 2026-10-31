@@ -50,12 +50,18 @@ else:
         return LOGS
 
 
+    def _unavailable(name, exc):
+        # REQUIRE_SERVICES=1 (used by scripts/test_all.sh / CI): an unreachable dependency is a FAILURE, never a skip.
+        if os.getenv("REQUIRE_SERVICES") == "1":
+            pytest.fail(f"{name} required but unavailable: {exc}", pytrace=False)
+        pytest.skip(f"{name} unavailable: {exc}")
+
     @pytest_asyncio.fixture
     async def db():
         try:
             conn = await psycopg.AsyncConnection.connect(os.environ["APP_DATABASE_URL"], autocommit=True)
         except Exception as exc:
-            pytest.skip(f"postgres unavailable: {exc}")
+            _unavailable("postgres", exc)
         await conn.execute((ROOT / "db" / "schema.sql").read_text())
         await conn.execute("TRUNCATE notifications")
         yield conn
@@ -67,7 +73,7 @@ else:
         try:
             mq = await aio_pika.connect_robust(os.environ["RABBITMQ_URL"])
         except Exception as exc:
-            pytest.skip(f"rabbitmq unavailable: {exc}")
+            _unavailable("rabbitmq", exc)
         ch = await mq.channel()
         queue = await ch.declare_queue("notifications.create", durable=True)
         await queue.purge()

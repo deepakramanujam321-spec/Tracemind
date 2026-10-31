@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Span } from '../api/types'
-import { fmtClock, fmtDur, spanDur } from '../util'
+import { fmtClock, fmtDur, spanDur, tms } from '../util'
 import { RefChip } from './Evidence'
 
 interface Row { span: Span; depth: number }
@@ -14,7 +14,7 @@ function order(spans: Span[]): Row[] {
   }
   const rows: Row[] = []
   const walk = (pid: string | null, depth: number) => {
-    const kids = (byParent.get(pid) ?? []).sort((a, b) => Date.parse(a.start_time) - Date.parse(b.start_time))
+    const kids = (byParent.get(pid) ?? []).sort((a, b) => tms(a.start_time) - tms(b.start_time))
     for (const k of kids) { rows.push({ span: k, depth }); walk(k.span_id, depth + 1) }
   }
   walk(null, 0)
@@ -28,8 +28,8 @@ export default function Waterfall({ spans }: { spans: Span[] }) {
   const svc = useMemo(() => Array.from(new Set(spans.map((s) => s.service_name))), [spans])
   const [sel, setSel] = useState<string | null>(() => spans.find((s) => s.status_code === 'ERROR')?.span_id ?? null)
   if (!spans.length) return null
-  const t0 = Math.min(...spans.map((s) => Date.parse(s.start_time)))
-  const t1 = Math.max(...spans.map((s) => Date.parse(s.end_time)))
+  const t0 = Math.min(...spans.map((s) => tms(s.start_time)))
+  const t1 = Math.max(...spans.map((s) => tms(s.start_time) + spanDur(s)))
   const total = Math.max(t1 - t0, 1)
   const selected = spans.find((s) => s.span_id === sel) ?? null
   const ticks = [0, 0.25, 0.5, 0.75, 1]
@@ -47,8 +47,8 @@ export default function Waterfall({ spans }: { spans: Span[] }) {
       </div>
       <div role="listbox" aria-label="Spans in trace">
         {rows.map(({ span: s, depth }) => {
-          const left = ((Date.parse(s.start_time) - t0) / total) * 100
-          const width = Math.max((spanDur(s) / total) * 100, 0.6)
+          const left = Math.min(((tms(s.start_time) - t0) / total) * 100, 99.4)
+          const width = Math.min(Math.max((spanDur(s) / total) * 100, 0.6), 100 - left)
           const err = s.status_code === 'ERROR'
           const color = err ? 'var(--bad)' : COLORS[svc.indexOf(s.service_name) % 4]
           return (
@@ -66,7 +66,7 @@ export default function Waterfall({ spans }: { spans: Span[] }) {
               <div className="wf-track">
                 {ticks.map((t) => <i key={t} className="wf-grid" style={{ left: `${t * 100}%` }} />)}
                 <span className="wf-bar" style={{ left: `${left}%`, width: `${width}%`, background: color }} />
-                <span className="wf-dur" style={{ left: `${Math.min(left + width + 0.8, 88)}%` }}>{fmtDur(spanDur(s))}</span>
+                <span className="wf-dur" style={{ left: left + width > 84 ? undefined : `${left + width + 0.8}%`, right: left + width > 84 ? `${100 - left + 0.8}%` : undefined }}>{fmtDur(spanDur(s))}</span>
               </div>
             </button>
           )

@@ -31,6 +31,20 @@ export function RefChip({ ref_, tone }: { ref_: EvidenceRef; tone?: 'for' | 'aga
   )
 }
 
+const REF_RE = /((?:span:[0-9a-f]+:[0-9a-f]+)|(?:event:[0-9a-f]+:[0-9a-f]+:\d+)|(?:log:\d+)|(?:code:[\w.-]+:[^\s:,)]+:\d+(?:-\d+)?)|(?:sig:[\w.-]+:\w+))/
+
+/** Renders free text with embedded evidence refs turned into clickable chips. */
+export function RichText({ text }: { text: string }) {
+  const parts = text.split(REF_RE)
+  return (
+    <>
+      {parts.map((p, i) =>
+        i % 2 ? <RefChip key={i} ref_={p} /> : p.split(/(`[^`]+`)/).map((q, j) => (q.startsWith('`') && q.endsWith('`') && q.length > 2 ? <code key={`${i}-${j}`} className="ic">{q.slice(1, -1)}</code> : <span key={`${i}-${j}`}>{q}</span>)),
+      )}
+    </>
+  )
+}
+
 export function RefList({ refs, tone }: { refs: EvidenceRef[]; tone?: 'for' | 'against' }) {
   if (!refs.length) return <span className="muted small">none</span>
   return <div className="refs">{refs.map((r) => <RefChip key={r} ref_={r} tone={tone} />)}</div>
@@ -132,11 +146,13 @@ function EvidenceBody({ ev }: { ev: EvidenceRecord }) {
       return (
         <>
           <dl className="kv">
-            <div><dt>span</dt><dd>{String(r.span)} ({String(r.service_name)})</dd></div>
+            {r.span != null && <div><dt>span</dt><dd>{String(r.span)}{r.service_name ? ` (${String(r.service_name)})` : ''}</dd></div>}
             <div><dt>time</dt><dd className="mono">{fmtDateTime(r.time as string)}</dd></div>
+            <div><dt>name</dt><dd>{String(r.name)}</dd></div>
           </dl>
+          {typeof attrs['exception.stacktrace'] === 'string' && <><h4>Stack trace</h4><pre className="pre">{attrs['exception.stacktrace'] as string}</pre></>}
           <h4>Attributes</h4>
-          <Kv obj={attrs} />
+          <Kv obj={Object.fromEntries(Object.entries(attrs).filter(([k]) => k !== 'exception.stacktrace'))} />
         </>
       )
     case 'log':

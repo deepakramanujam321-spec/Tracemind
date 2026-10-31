@@ -19,7 +19,8 @@ export function ErrorBox({ error, onRetry }: { error: string; onRetry?: () => vo
       <div>
         <strong>Request failed.</strong> <span className="mono">{error}</span>
       </div>
-      {onRetry && (
+      {/not found/i.test(error) && <a className="btn btn-sm" href="/">Back to overview</a>}
+      {onRetry && !/not found/i.test(error) && (
         <button className="btn btn-sm" onClick={onRetry}>
           Retry
         </button>

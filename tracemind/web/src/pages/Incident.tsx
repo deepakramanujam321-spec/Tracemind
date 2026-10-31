@@ -1,5 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
+import type { IncidentDetail } from '../api/types'
 import { useAction, useFetch } from '../hooks'
 import { Card, CertaintyBadge, Empty, ErrorBox, Loading, Pill, SeverityBadge, Spinner, StatusBadge } from '../components/Common'
 import { PageHead } from '../components/Layout'
@@ -11,7 +12,7 @@ import { fmtClock, fmtDateTime } from '../util'
 export default function IncidentPage() {
   const { id = '' } = useParams()
   const nav = useNavigate()
-  const inc = useFetch(() => api.incident(id), [id])
+  const inc = useFetch(() => api.incident(id), [id], { poll: 3000, done: (d: IncidentDetail) => !d.investigations.some((v) => v.status === 'queued' || v.status === 'running') })
   const traceId = inc.data?.context.trace_ids[0]
   const trace = useFetch(async () => (traceId ? api.trace(id, traceId) : null), [id, traceId])
   const start = useAction(async () => {
@@ -27,6 +28,7 @@ export default function IncidentPage() {
   const spans = trace.data?.spans ?? []
   const errSpans = spans.filter((s) => s.status_code === 'ERROR')
   const latest = d.investigations[0]
+  const running = d.investigations.find((v) => v.status === 'queued' || v.status === 'running')
 
   return (
     <>
@@ -42,9 +44,10 @@ export default function IncidentPage() {
         }
         actions={
           <>
-            {latest && <Link className="btn" to={`/investigations/${latest.id}`}>Open latest investigation</Link>}
-            <button className="btn btn-primary" onClick={() => start.run()} disabled={start.pending}>
-              {start.pending ? <><Spinner /> Starting…</> : 'Start investigation'}
+            {latest && <Link className="btn" to={`/investigations/${latest.id}`}>{running ? 'View running investigation' : 'Open latest investigation'}</Link>}
+            <button className="btn btn-primary" onClick={() => start.run()} disabled={start.pending || !!running}
+              title={running ? `Investigation ${running.id} is already ${running.status}` : undefined}>
+              {start.pending ? <><Spinner /> Starting…</> : running ? <><Spinner /> Investigation running…</> : d.investigations.length ? 'Re-run investigation' : 'Start investigation'}
             </button>
           </>
         }

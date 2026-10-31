@@ -28,11 +28,13 @@ SYSTEM = (
 
 class RemediationEngine:
     def __init__(self, model: ModelProvider, store: RemediationStore, sandbox_root: Path,
-                 test_cmd: list[str] | None = None, image: str | None = None, test_timeout: float = 180) -> None:
+                 test_cmd: list[str] | None = None, image: str | None = None, test_timeout: float = 180,
+                 suite_paths: list[str] | None = None) -> None:
         self.model, self.store = model, store
         self.sandbox_root = Path(sandbox_root).resolve()
         self.test_cmd = test_cmd or ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"]
         self.test_timeout = test_timeout
+        self.suite_paths = suite_paths or []  # paths for the full-suite run (default: whole repo)
         self.image = image
 
     # ---- sandbox
@@ -122,7 +124,7 @@ class RemediationEngine:
         self.store.set_status(rid, "patch_generated", sandbox_path=str(sandbox), base_sha=sha)
         res.status = "patch_generated"
 
-        full = run_in_docker(self.store, rid, "test", sandbox, self.test_cmd, **kw)
+        full = run_in_docker(self.store, rid, "test", sandbox, [*self.test_cmd, *self.suite_paths], **kw)
         reg = run_in_docker(self.store, rid, "regression_test", sandbox, [*self.test_cmd, regression_test], **kw)
         res.tests_passed = full.exit_code == 0
         # exit 5 == no tests collected: does not count as a pass

@@ -4,7 +4,9 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${1:-$ROOT/.tracemind/demo-repo}"
-rm -rf "$DEST"; mkdir -p "$DEST"
+# Refresh contents IN PLACE (do not rm -rf the directory): a running container that bind-mounts it would be left
+# pointing at a deleted inode.
+mkdir -p "$DEST"; find "$DEST" -mindepth 1 -delete
 git -C "$ROOT" archive HEAD demo | tar -x -C "$DEST" --strip-components=1
 cd "$DEST"
 git init -q -b main

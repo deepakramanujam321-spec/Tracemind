@@ -1,0 +1,11 @@
+# TraceMind remediation sandbox image. Built ONCE with network access (controlled build step); tests then run
+# with `--network none`, so every dependency the target repo's tests need must be baked in here.
+#   docker build -t tracemind-sandbox:latest -f Dockerfile.sandbox .
+# Extend the pip line when the real demo app needs more test deps (psycopg etc. cannot reach a DB offline:
+# demo tests that need Postgres must use sqlite/fakes to be runnable in the sandbox).
+FROM python:3.12-slim
+RUN pip install --no-cache-dir pytest==8.3.4 \
+ && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sandbox
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp
+USER 10001
+WORKDIR /work

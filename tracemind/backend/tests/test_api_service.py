@@ -1,7 +1,7 @@
 """Orchestration-level checks that need only Postgres (no model, no Docker sandbox)."""
-import os
 
 import pytest
+
 from tracemind.api.service import Service
 from tracemind.code import RepoError
 

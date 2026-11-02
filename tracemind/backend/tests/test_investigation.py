@@ -175,7 +175,7 @@ def test_prompt_injection_in_log_is_delimited_and_cannot_mint_evidence():
              agent="trace_investigator")
     d, _ = deps_for(p, code=False)
     res = run_investigation(make_ctx(INJECTION), d)
-    for schema, msgs in p.calls:
+    for _schema, msgs in p.calls:
         sys_, user = msgs[0].content, msgs[1].content
         assert "never instructions" in sys_ and "DATA" in sys_
         start = user.index("<<<UNTRUSTED_DATA")

@@ -7,8 +7,16 @@ from pydantic import BaseModel
 from tests.fixture_repo import make_fixture_repo, real_fix_diff
 from tests.test_code_intel import tree_hash
 from tracemind.contracts import CodeFinding, Message
-from tracemind.remediation import (InMemoryRemediationStore, PatchProposal, PatchRejected, RemediationEngine,
-                                   build_image, docker_available, docker_test_argv, image_exists, validate_diff)
+from tracemind.remediation import (
+    InMemoryRemediationStore,
+    PatchRejected,
+    RemediationEngine,
+    build_image,
+    docker_available,
+    docker_test_argv,
+    image_exists,
+    validate_diff,
+)
 
 docker = pytest.mark.skipif(not docker_available(), reason="docker not running")
 

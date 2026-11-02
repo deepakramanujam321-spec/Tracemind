@@ -34,6 +34,25 @@ export function fixturesActive(): boolean {
   }
 }
 
+const KEY = 'tm.apiKey'
+
+export function getApiKey(): string {
+  try {
+    return sessionStorage.getItem(KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function setApiKey(key: string): void {
+  try {
+    if (key) sessionStorage.setItem(KEY, key)
+    else sessionStorage.removeItem(KEY)
+  } catch {
+    /* storage unavailable: key lives only until reload */
+  }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   if (fixturesActive()) {
     const { handleFixture } = await import('../fixtures')
@@ -43,12 +62,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   try {
     res = await fetch(BASE + path, {
       method,
-      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      headers: {
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(getApiKey() ? { Authorization: `Bearer ${getApiKey()}` } : {}),
+      },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
   } catch {
     throw new ApiError(0, 'Cannot reach the TraceMind backend (is tracemind-backend running on :8100?)')
   }
+  if (res.status === 401) window.dispatchEvent(new Event('tm-unauthorized'))
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`
     try {

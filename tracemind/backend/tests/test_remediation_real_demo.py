@@ -10,8 +10,7 @@ from pydantic import BaseModel
 
 from tests.test_code_intel import tree_hash
 from tracemind.contracts import CodeFinding, Message
-from tracemind.remediation import (InMemoryRemediationStore, RemediationEngine, build_image, docker_available,
-                                   docker_test_argv, image_exists)
+from tracemind.remediation import InMemoryRemediationStore, RemediationEngine, build_image, docker_available, docker_test_argv, image_exists
 from tracemind.remediation.runner import SANDBOX_IMAGE, run_in_docker
 
 ROOT = Path(__file__).resolve().parents[3]

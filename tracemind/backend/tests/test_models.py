@@ -100,6 +100,7 @@ def _ok(text="pong"):
 
 def test_gemma_api_retries_transient_5xx_then_succeeds(monkeypatch):
     import httpx
+
     from tracemind.contracts import Message
     from tracemind.models.gemma_api import GemmaApiProvider
     monkeypatch.setattr("time.sleep", lambda s: None)
@@ -116,6 +117,7 @@ def test_gemma_api_retries_transient_5xx_then_succeeds(monkeypatch):
 def test_gemma_api_does_not_retry_client_errors(monkeypatch):
     import httpx
     import pytest
+
     from tracemind.contracts import Message
     from tracemind.models.gemma_api import GemmaApiProvider
     from tracemind.models.structured import ModelError
@@ -136,6 +138,7 @@ def test_gemma_api_sends_thinking_level_and_drops_thought_parts():
     import json
 
     import httpx
+
     from tracemind.contracts import Message
     from tracemind.models.gemma_api import GemmaApiProvider
     seen = {}

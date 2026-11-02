@@ -7,6 +7,7 @@ from pathlib import Path
 
 import psycopg
 import pytest
+
 from tracemind.store import PostgresTelemetryRepository, migrate
 
 sys.path.insert(0, str(Path(__file__).parent))  # lets tests import scripted_provider, fixtures

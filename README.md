@@ -14,7 +14,7 @@ logs, message redeliveries, service dependencies and code by hand, then implemen
 anything. TraceMind automates the legwork and keeps the proof. The monitored application needs **no TraceMind SDK**:
 anything that exports standard OTLP/HTTP (protobuf) traces and logs can be investigated.
 
-> Hackathon MVP. It works end to end on one deterministic incident and is **not production-ready**. See [Limitations](#limitations).
+> Hackathon MVP, now hardened for small trusted-team use (auth, rate limiting, redaction, non-root, pinned deps). It works end to end on one deterministic incident and is **not yet production-ready**: see [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the remaining work and [Limitations](#limitations).
 
 ## Project at a glance
 

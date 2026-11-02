@@ -83,10 +83,10 @@ class Service:
     def ensure_repo_loaded(self, repo_id: str) -> None:
         try:
             self.registry.get(repo_id)
-        except Exception:
+        except Exception as exc:
             r = self.one("SELECT path FROM repositories WHERE id=%s", (repo_id,))
             if not r:
-                raise KeyError(repo_id)
+                raise KeyError(repo_id) from exc
             self.registry.register(r["path"], repo_id=repo_id)
 
     # ---- incidents

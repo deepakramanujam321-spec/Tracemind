@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import psycopg
 from otlp_fixtures import NID, S_INS1, TRACE, log_request, synthetic_redelivery
+
 from tracemind.ingest.otlp import parse_logs, parse_traces
 from tracemind.store import migrate
 

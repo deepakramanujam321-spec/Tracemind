@@ -25,6 +25,8 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.116.1
     command: ["--config=/etc/otelcol/config.yaml"]
+    environment:
+      TRACEMIND_INGEST_TOKEN: ${TRACEMIND_INGEST_TOKEN:-}
     volumes: ["./infra/collector/config.yaml:/etc/otelcol/config.yaml:ro"]
     ports: ["127.0.0.1:4318:4318"]
     mem_limit: ${COLLECTOR_MEM_LIMIT:-512m}
@@ -36,6 +38,12 @@ services:
     build: ./tracemind/backend
     environment:
       TRACEMIND_DATABASE_URL: ${TRACEMIND_DATABASE_URL}
+      TRACEMIND_API_KEY: ${TRACEMIND_API_KEY:-}
+      TRACEMIND_INGEST_TOKEN: ${TRACEMIND_INGEST_TOKEN:-}
+      TRACEMIND_AUTH_REQUIRED: ${TRACEMIND_AUTH_REQUIRED:-false}
+      TRACEMIND_CORS_ORIGINS: ${TRACEMIND_CORS_ORIGINS:-}
+      TRACEMIND_TRUST_PROXY: ${TRACEMIND_TRUST_PROXY:-false}
+      TRACEMIND_REDACTION: ${TRACEMIND_REDACTION:-on}
       MODEL_PROVIDER: ${MODEL_PROVIDER:-}
       MODEL_NAME: ${MODEL_NAME:-}
       MODEL_BASE_URL: ${MODEL_BASE_URL:-}

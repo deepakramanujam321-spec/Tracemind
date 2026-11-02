@@ -11,6 +11,12 @@ jobs:
         with: { node-version: "22" }
       - name: Install backend
         run: python -m venv .venv && .venv/bin/pip install -q -e "tracemind/backend[dev]"
+      - name: Lint
+        run: cd tracemind/backend && ../../.venv/bin/python -m ruff check tracemind tests
+      - name: Frontend production dependency audit
+        run: cd tracemind/web && npm ci --silent && npm audit --omit=dev
+      - name: Validate compose files
+        run: docker compose config -q && TRACEMIND_HOST_ROOT=$PWD docker compose -f docker-compose.yml -f docker-compose.remediation.yml config -q
       - name: Build sandbox image (needed by the real-Docker remediation tests)
         run: ./scripts/build_sandbox_image.sh
       - name: All suites (injected_bug specs are expected to fail at baseline; the script asserts that)

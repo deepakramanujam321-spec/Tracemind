@@ -5,7 +5,7 @@ import os
 import subprocess
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .models import CommandRun, RemediationStore
@@ -34,7 +34,7 @@ def clean_env() -> dict[str, str]:
 def run_recorded(store: RemediationStore, rid: str, phase: str, argv: list[str], *, cwd: Path | None = None,
                  timeout: float = 120, input_text: str | None = None, on_timeout: list[str] | None = None) -> CommandRun:
     start = time.monotonic()
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     try:
         p = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout, env=clean_env(), input=input_text)
         code, out, err = p.returncode, p.stdout, p.stderr

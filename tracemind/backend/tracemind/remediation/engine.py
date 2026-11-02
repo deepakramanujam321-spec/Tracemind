@@ -49,7 +49,7 @@ class RemediationEngine:
         dest.mkdir(parents=True)
         # read-only access to the source: git archive writes only to stdout
         r = run_recorded(self.store, rid, "sandbox_create",
-                         ["sh", "-c", f'git -C "$1" archive --format=tar "$2" | tar -x -C "$3"', "sh", str(repo), sha, str(dest)])
+                         ["sh", "-c", 'git -C "$1" archive --format=tar "$2" | tar -x -C "$3"', "sh", str(repo), sha, str(dest)])
         if r.exit_code != 0:
             shutil.rmtree(dest, ignore_errors=True)
             raise RuntimeError(f"sandbox creation failed: {r.stderr}")
@@ -165,6 +165,7 @@ class RemediationEngine:
 
     def _full_diff(self, sandbox: Path) -> str:
         import subprocess
+
         from .runner import clean_env
         return subprocess.run(["git", "diff", "--cached", "--no-color", "HEAD"], cwd=sandbox, capture_output=True,
                               text=True, env=clean_env()).stdout

@@ -17,6 +17,8 @@ exporters:
   otlphttp/tracemind:
     endpoint: http://tracemind-backend:8100
     encoding: proto
+    headers:
+      Authorization: "Bearer ${env:TRACEMIND_INGEST_TOKEN}"   # empty token = backend ingest auth disabled
     retry_on_failure:
       enabled: true
       max_elapsed_time: 60s

@@ -11,6 +11,7 @@ from otlp_fixtures import (
     log_request,
     synthetic_redelivery,
 )
+
 from tracemind.correlation import EvidenceResolver, detect_incidents
 from tracemind.ingest.otlp import parse_logs, parse_traces
 

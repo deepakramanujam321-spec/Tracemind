@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 
 from tracemind.contracts import Hypothesis, IncidentContext, Message
+from tracemind.security import redact
 
 OPEN, CLOSE = "<<<UNTRUSTED_DATA", "UNTRUSTED_DATA>>>"
 
@@ -23,7 +24,7 @@ def neutralize(text: str) -> str:
 
 
 def data_block(label: str, text: str) -> str:
-    return f"{OPEN} label={label}\n{neutralize(text)}\n{CLOSE}"
+    return f"{OPEN} label={label}\n{neutralize(redact(text))}\n{CLOSE}"
 
 
 def context_text(ctx: IncidentContext) -> str:

@@ -1,5 +1,4 @@
 import hashlib
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -7,8 +6,14 @@ from pathlib import Path
 import pytest
 
 from tests.fixture_repo import make_fixture_repo
-from tracemind.code import (FallbackCodeIntelligence, GraphifyCodeIntelligence, RepoError, RepoRegistry,
-                            build_code_intelligence, resolve_code_ref)
+from tracemind.code import (
+    FallbackCodeIntelligence,
+    GraphifyCodeIntelligence,
+    RepoError,
+    RepoRegistry,
+    build_code_intelligence,
+    resolve_code_ref,
+)
 
 GRAPHIFY = shutil.which("graphify") or str(Path.home() / ".local/bin/graphify")
 needs_graphify = pytest.mark.skipif(not Path(GRAPHIFY).exists(), reason="graphify CLI not installed")
@@ -87,7 +92,7 @@ def test_read_source_rejects_symlink_escape(tmp_path, repo, reg):
 
 
 def test_resolve_code_ref(reg):
-    ok = resolve_code_ref(reg, "code:fixture-repo:worker.py:%d-%d" % _lines("def process_message", "ack(msg)"))
+    ok = resolve_code_ref(reg, "code:fixture-repo:worker.py:{}-{}".format(*_lines("def process_message", "ack(msg)")))
     assert "INSERT INTO notifications" in ok.text
     for bad in ("code:fixture-repo:worker.py:1-999", "code:fixture-repo:nofile.py:1-2", "code:other:worker.py:1-2",
                 "code:fixture-repo:../x:1-2", "garbage", "code:fixture-repo:worker.py:5-2"):

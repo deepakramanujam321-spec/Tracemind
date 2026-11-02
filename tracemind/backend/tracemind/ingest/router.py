@@ -75,9 +75,9 @@ async def _body(request: Request) -> bytes:
             data = d.decompress(raw, MAX_BODY + 1)
             if len(data) > MAX_BODY or d.unconsumed_tail:
                 raise HTTPException(413, "decompressed body too large")
-        except (zlib.error, EOFError, OSError):
+        except (zlib.error, EOFError, OSError) as exc:
             stats.add(rejected_requests=1)
-            raise HTTPException(400, "invalid gzip body")
+            raise HTTPException(400, "invalid gzip body") from exc
     else:
         stats.add(rejected_requests=1)
         raise HTTPException(415, f"unsupported Content-Encoding: {enc}")
@@ -98,13 +98,13 @@ async def ingest_traces(request: Request) -> Response:
         spans = parse_traces(data)
     except OtlpDecodeError as e:
         stats.add(rejected_requests=1)
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from e
     try:
         n = await run_in_threadpool(repo.save_spans, spans)
     except Exception as e:  # storage failure: 503 so the collector retries
         stats.add(storage_errors=1)
         stats.last_error = f"{type(e).__name__}: {e}"
-        raise HTTPException(503, "storage unavailable")
+        raise HTTPException(503, "storage unavailable") from e
     stats.add(trace_requests=1, spans_accepted=n)
     return _ok(ExportTraceServiceResponse)
 
@@ -117,13 +117,13 @@ async def ingest_logs(request: Request) -> Response:
         logs = parse_logs(data)
     except OtlpDecodeError as e:
         stats.add(rejected_requests=1)
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from e
     try:
         n = await run_in_threadpool(repo.save_logs, logs)
     except Exception as e:
         stats.add(storage_errors=1)
         stats.last_error = f"{type(e).__name__}: {e}"
-        raise HTTPException(503, "storage unavailable")
+        raise HTTPException(503, "storage unavailable") from e
     stats.add(log_requests=1, logs_accepted=n)
     return _ok(ExportLogsServiceResponse)
 

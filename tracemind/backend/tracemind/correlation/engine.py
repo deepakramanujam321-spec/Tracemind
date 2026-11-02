@@ -188,7 +188,7 @@ def analyze_trace(trace_id: str, spans: list[Span], logs: list[LogRecord]) -> In
             continue
         red_ids = {r.span_id for r in red}
 
-        def under_redelivery(w: Span) -> bool:
+        def under_redelivery(w: Span, red_ids: set[str] = red_ids) -> bool:
             return any(x.span_id in red_ids for x in (w, *t.ancestors(w)))
 
         ok_ws = [w for w in ws if w.status_code != "ERROR"]

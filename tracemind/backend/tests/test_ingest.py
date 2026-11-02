@@ -7,6 +7,7 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceResponse,
 )
 from otlp_fixtures import TRACE, log_request, synthetic_redelivery
+
 from tracemind.ingest import router
 from tracemind.ingest.router import stats
 

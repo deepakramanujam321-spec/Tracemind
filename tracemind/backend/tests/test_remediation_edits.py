@@ -1,5 +1,6 @@
 """Search/replace edit path of the remediation engine (apply_edits). Pure-filesystem tests, no Docker."""
 import pytest
+
 from tracemind.remediation.models import Edit
 from tracemind.remediation.patching import PatchRejected, apply_edits
 
